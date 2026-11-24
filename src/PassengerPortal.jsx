@@ -32,6 +32,13 @@ export default function PassengerPortal({
   // Page Navigation (1 = Search/Home, 2 = Results, 3 = Details, 4 = Live Tracking)
   const [screen, setScreen] = useState(initialScreen)
 
+  // Synchronize screen state with incoming initialScreen prop (e.g. Header logo, Home, or navigation)
+  useEffect(() => {
+    if (initialScreen) {
+      setScreen(initialScreen)
+    }
+  }, [initialScreen])
+
   // Search Fields (Default: Surathkal -> Udupi along the 9 corridor stops, desired time: Now)
   const [currentStop, setCurrentStop] = useState('Surathkal')
   const [destination, setDestination] = useState('Udupi')
@@ -59,11 +66,11 @@ export default function PassengerPortal({
     }
   }, [preselectedStop])
 
-  // Bus List & Filters (Screen 2)
+  // Bus List & Filters (Screen 2) - default to 'all' so scheduled services are immediately visible
   const [buses, setBuses] = useState([])
   const [loadingBuses, setLoadingBuses] = useState(false)
   const [searchError, setSearchError] = useState('')
-  const [activeFilter, setActiveFilter] = useState('active') // 'active' | 'all' | 'scheduled'
+  const [activeFilter, setActiveFilter] = useState('all') // 'all' | 'active' | 'scheduled'
 
   // Selected Bus Details (Screen 3 & Screen 4)
   const [selectedBus, setSelectedBus] = useState(null)

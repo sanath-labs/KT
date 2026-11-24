@@ -178,6 +178,7 @@ function App() {
       <section className="app-content flex-1 flex flex-col bg-slate-50">
         {role === 'passenger' && (
           <PassengerPortal
+            key={`${role}-${passengerScreen}`}
             preselectedStop={preselectedStop}
             initialScreen={passengerScreen}
             lang={lang}
