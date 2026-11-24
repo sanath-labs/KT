@@ -681,22 +681,33 @@ export async function recordTelemetry(data) {
 
 // 3. Fetch Route Stops for a Bus
 export async function getBusRouteStops(busId) {
+  let rows = []
   if (isPostgres()) {
     const res = await pgPool.query(
       'SELECT stop_order, stop_name, planned_arrival FROM bus_route_stops WHERE bus_id = $1 ORDER BY stop_order ASC',
       [busId]
     )
-    return res.rows || []
+    rows = res.rows || []
+  } else {
+    rows = await new Promise((resolve) => {
+      sqliteDb.all(
+        'SELECT stop_order, stop_name, planned_arrival FROM bus_route_stops WHERE bus_id = ? ORDER BY stop_order ASC',
+        [busId],
+        (err, r) => {
+          resolve(err ? [] : r || [])
+        }
+      )
+    })
   }
 
-  return new Promise((resolve) => {
-    sqliteDb.all(
-      'SELECT stop_order, stop_name, planned_arrival FROM bus_route_stops WHERE bus_id = ? ORDER BY stop_order ASC',
-      [busId],
-      (err, rows) => {
-        resolve(err ? [] : rows || [])
-      }
-    )
+  return rows.map((r) => {
+    const clean = normalizeStopSearchTerm(r.stop_name)
+    const match = ALL_UNIQUE_STOPS.find((s) => normalizeStopSearchTerm(s.stop_name) === clean)
+    return {
+      ...r,
+      latitude: match?.latitude || null,
+      longitude: match?.longitude || null,
+    }
   })
 }
 
@@ -2008,8 +2019,8 @@ export async function searchBusesByJourney(fromQuery, toQuery, activeBuses = {},
         longitude: hasLiveGps ? activeData.longitude : (activeData.longitude || null),
         speed: hasLiveGps ? (activeData.speed || 0) : 0,
         next_stop: activeData.next_stop || null,
-        conductor_name: conductor?.name || activeData.conductor_name || null,
-        conductor_phone: conductor?.phone || null,
+        conductor_name: activeData.conductor_name || conductor?.name || null,
+        conductor_phone: activeData.driver_phone || activeData.conductor_phone || conductor?.phone || null,
         stops: travelStops,
       })
     }

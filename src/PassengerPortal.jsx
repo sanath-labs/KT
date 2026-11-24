@@ -440,12 +440,12 @@ export default function PassengerPortal({
   const [isFollowingBus, setIsFollowingBus] = useState(true)
 
   const busCoords = useMemo(() => {
-    if (hasLiveCoordinates) {
+    if (hasLiveCoordinates && typeof trackedTelemetry?.latitude === 'number' && typeof trackedTelemetry?.longitude === 'number' && !isNaN(trackedTelemetry.latitude) && !isNaN(trackedTelemetry.longitude)) {
       return [trackedTelemetry.latitude, trackedTelemetry.longitude]
     }
-    // Default corridor center (Kaup / Padubidri) for map centering when bus has not yet transmitted GPS
-    return [13.2208, 74.7431]
-  }, [hasLiveCoordinates, trackedTelemetry])
+    // Default corridor center for map centering
+    return activeRouteInfo?.route_id === 'R1' ? [13.0410, 74.9080] : [13.2208, 74.7431]
+  }, [hasLiveCoordinates, trackedTelemetry, activeRouteInfo])
 
   // Active Route Information (Route 1: Karkala–Mangaluru NH-169 vs Route 2: Mangaluru–Kundapura NH-66)
   const activeRouteInfo = useMemo(() => {
@@ -480,10 +480,10 @@ export default function PassengerPortal({
 
   // Snapped road coordinate or raw GPS coordinate for the moving bus marker
   const movingBusLatLng = useMemo(() => {
-    if (roadMatch?.isMatched) {
+    if (roadMatch?.isMatched && typeof roadMatch.roadLat === 'number' && typeof roadMatch.roadLng === 'number' && !isNaN(roadMatch.roadLat) && !isNaN(roadMatch.roadLng)) {
       return [roadMatch.roadLat, roadMatch.roadLng]
     }
-    if (hasLiveCoordinates) {
+    if (hasLiveCoordinates && typeof trackedTelemetry?.latitude === 'number' && typeof trackedTelemetry?.longitude === 'number' && !isNaN(trackedTelemetry.latitude) && !isNaN(trackedTelemetry.longitude)) {
       return [trackedTelemetry.latitude, trackedTelemetry.longitude]
     }
     return busCoords
@@ -511,18 +511,31 @@ export default function PassengerPortal({
     currentTrackingStatus,
   ])
 
-  // Official route stops timeline in travel direction for Screen 3 & Map Pins
+  // Official route stops timeline in travel direction for Screen 3 & Map Pins (ALWAYS with verified coordinates)
   const corridorTimelineStops = useMemo(() => {
-    if (activeSelectedBus?.stops && Array.isArray(activeSelectedBus.stops) && activeSelectedBus.stops.length >= 7) {
-      return activeSelectedBus.stops
-    }
-    if (routeDetails?.stops && Array.isArray(routeDetails.stops) && routeDetails.stops.length >= 7) {
-      return routeDetails.stops
-    }
-    if (activeRouteInfo?.ordered_stops) {
-      return activeRouteInfo.ordered_stops
-    }
-    return activeRouteInfo?.route_id === 'R1' ? SYSTEM_ROUTES.R1.stops : SYSTEM_ROUTES.R2.stops
+    const routeId = activeRouteInfo?.route_id || (activeSelectedBus?.route_id === 'R1' ? 'R1' : 'R2')
+    const baseStops = routeId === 'R1' ? SYSTEM_ROUTES.R1.stops : SYSTEM_ROUTES.R2.stops
+    const isReverse = Boolean(activeRouteInfo?.is_reverse || activeRouteInfo?.isReverse)
+    const directionStops = isReverse ? [...baseStops].reverse() : [...baseStops]
+
+    const busStops = activeSelectedBus?.stops || routeDetails?.stops || []
+
+    return directionStops.map((cStop, idx) => {
+      const match = busStops.find(
+        (bs) => bs.stop_name && (
+          bs.stop_name.toLowerCase().trim() === cStop.stop_name.toLowerCase().trim() ||
+          bs.stop_name.toLowerCase().includes(cStop.stop_name.toLowerCase()) ||
+          cStop.stop_name.toLowerCase().includes(bs.stop_name.toLowerCase())
+        )
+      )
+      return {
+        ...cStop,
+        stop_order: idx + 1,
+        planned_arrival: match?.planned_arrival || cStop.planned_arrival || '--:--',
+        latitude: typeof cStop.latitude === 'number' ? cStop.latitude : 12.9141,
+        longitude: typeof cStop.longitude === 'number' ? cStop.longitude : 74.8560,
+      }
+    })
   }, [routeDetails, activeSelectedBus, activeRouteInfo])
 
   // Verified road polyline geometry: NH-169 for Route 1, NH-66 for Route 2
@@ -902,6 +915,7 @@ export default function PassengerPortal({
       {/* Large Responsive Map Container */}
       <div className="relative w-full h-[560px] sm:h-[640px] md:h-[700px] rounded-2xl overflow-hidden border border-slate-200 shadow-xs">
         <MapContainer
+          key={`tracking-map-${activeRouteInfo?.route_id || 'R1'}-${activeSelectedBus?.bus_id || 'default'}`}
           center={movingBusLatLng}
           zoom={12}
           zoomControl={false}
@@ -941,8 +955,11 @@ export default function PassengerPortal({
 
           {/* Labeled Pins for Official Corridor Stops of Selected Route */}
           {corridorTimelineStops.map((stop, sIdx) => {
-            const isDestination = stop.stop_name.toLowerCase() === destination.toLowerCase()
-            const isBoarding = stop.stop_name.toLowerCase() === currentStop.toLowerCase()
+            if (!stop || typeof stop.latitude !== 'number' || typeof stop.longitude !== 'number' || isNaN(stop.latitude) || isNaN(stop.longitude)) {
+              return null
+            }
+            const isDestination = stop.stop_name?.toLowerCase() === destination?.toLowerCase()
+            const isBoarding = stop.stop_name?.toLowerCase() === currentStop?.toLowerCase()
 
             return (
               <Marker
