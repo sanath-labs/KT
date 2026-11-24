@@ -3,6 +3,13 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import sqlite3 from 'sqlite3'
 import pg from 'pg'
+
+// Ensure PostgreSQL timestamps without timezone are parsed as UTC
+pg.types.setTypeParser(1114, (str) => {
+  if (!str) return null
+  const iso = str.includes('T') ? (str.endsWith('Z') ? str : `${str}Z`) : `${str.replace(' ', 'T')}Z`
+  return new Date(iso)
+})
 import { matchesConductorPin } from './serverAuth.js'
 import {
   parseTimeToMinutes,

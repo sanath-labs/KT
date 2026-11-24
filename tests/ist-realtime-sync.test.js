@@ -14,6 +14,7 @@ import {
   getRecentTelemetry,
   initDB,
   searchBusesByJourney,
+  getBuses,
 } from '../db.js'
 
 test('Real-Time Indian Standard Time (IST) Synchronization Suite', async (t) => {
@@ -115,10 +116,14 @@ test('Real-Time Indian Standard Time (IST) Synchronization Suite', async (t) => 
   })
 
   await t.test('6. Real-Time Journey Search matches against actual IST minutes', async () => {
+    const allBuses = await getBuses()
+    const targetBus = allBuses.find((b) => b.origin === 'Mangaluru' && b.destination === 'Kundapura') || allBuses[0]
+    const targetId = targetBus.bus_id
+
     const activeBuses = {
-      2: {
-        bus_id: 2,
-        bus_name: 'Sri Lakshmi Travels',
+      [targetId]: {
+        bus_id: targetId,
+        bus_name: targetBus.bus_name,
         latitude: 13.0068, // At Surathkal
         longitude: 74.7954,
         speed: 38,
@@ -134,8 +139,8 @@ test('Real-Time Indian Standard Time (IST) Synchronization Suite', async (t) => 
     assert.ok(Array.isArray(resultsNow), 'Results should be an array')
     assert.ok(resultsNow.length > 0, 'Should find buses for the corridor')
 
-    const liveBus = resultsNow.find((b) => b.bus_id === 2)
-    assert.ok(liveBus, 'Live bus #2 should be in results')
+    const liveBus = resultsNow.find((b) => b.bus_id === targetId)
+    assert.ok(liveBus, `Live bus #${targetId} should be in results`)
     assert.equal(liveBus.is_live, true)
     assert.ok(liveBus.schedule_adherence, 'Should contain schedule adherence')
     assert.ok(liveBus.adherence_label, 'Should contain adherence label')
@@ -143,11 +148,15 @@ test('Real-Time Indian Standard Time (IST) Synchronization Suite', async (t) => 
   })
 
   await t.test('7. Stale GPS Telemetry marks LOCATION STALE and prevents fake LIVE', async () => {
+    const allBuses = await getBuses()
+    const targetBus = allBuses.find((b) => b.origin === 'Mangaluru' && b.destination === 'Kundapura') || allBuses[0]
+    const targetId = targetBus.bus_id
     const staleTime = Date.now() - 300000 // 5 minutes ago
+
     const activeBuses = {
-      2: {
-        bus_id: 2,
-        bus_name: 'Padmambika Express',
+      [targetId]: {
+        bus_id: targetId,
+        bus_name: targetBus.bus_name,
         latitude: 13.0908, // Mulki
         longitude: 74.7903,
         speed: 0,
@@ -159,9 +168,9 @@ test('Real-Time Indian Standard Time (IST) Synchronization Suite', async (t) => 
     }
 
     const results = await searchBusesByJourney('Mulki', 'Udupi', activeBuses, null)
-    const bus2 = results.find((b) => b.bus_id === 2)
-    assert.ok(bus2, 'Bus #2 should be in results')
-    assert.equal(bus2.tracking_status, 'LOCATION STALE', 'Should not display fake LIVE when telemetry is stale')
-    assert.equal(bus2.is_live, false)
+    const busMatch = results.find((b) => b.bus_id === targetId)
+    assert.ok(busMatch, `Bus #${targetId} should be in results`)
+    assert.equal(busMatch.tracking_status, 'LOCATION STALE', 'Should not display fake LIVE when telemetry is stale')
+    assert.equal(busMatch.is_live, false)
   })
 })
