@@ -49,11 +49,30 @@ export function getSqliteDb() {
       } catch {}
     } catch (loadErr) {
       console.warn('⚠️ SQLite driver not loaded (safe fallback for PostgreSQL cloud deployments):', loadErr.message)
+      const findCb = (args) => {
+        for (let i = args.length - 1; i >= 0; i--) {
+          if (typeof args[i] === 'function') return args[i]
+        }
+        return null
+      }
       _sqliteDb = {
-        run: (_, cb) => cb && cb(new Error('SQLite not available in cloud environment')),
-        all: (_, cb) => cb && cb(new Error('SQLite not available in cloud environment'), []),
-        get: (_, cb) => cb && cb(new Error('SQLite not available in cloud environment'), null),
+        run: (...args) => {
+          const cb = findCb(args)
+          if (cb) cb(null)
+          return _sqliteDb
+        },
+        all: (...args) => {
+          const cb = findCb(args)
+          if (cb) cb(null, [])
+          return _sqliteDb
+        },
+        get: (...args) => {
+          const cb = findCb(args)
+          if (cb) cb(null, null)
+          return _sqliteDb
+        },
         serialize: (fn) => fn && fn(),
+        configure: () => {},
       }
     }
   }
@@ -102,10 +121,24 @@ export function isDbConnected() {
   return isConnected
 }
 
+const usePostgres =
+  process.env.USE_POSTGRES === 'true' ||
+  Boolean(process.env.DATABASE_URL) ||
+  Boolean(process.env.POSTGRES_URL)
+
 export function getDatabaseType() {
-  return activeEngine === 'postgres'
-    ? `PostgreSQL (${process.env.PGHOST || 'localhost'}:${process.env.PGPORT || 5432} / ${process.env.PGDATABASE || 'karavali_transit'})`
-    : 'SQL (SQLite transit.db)'
+  if (activeEngine === 'postgres') {
+    if (process.env.DATABASE_URL) {
+      try {
+        const u = new URL(process.env.DATABASE_URL)
+        return `PostgreSQL Cloud (${u.host}${u.pathname})`
+      } catch {
+        return 'PostgreSQL Cloud (DATABASE_URL)'
+      }
+    }
+    return `PostgreSQL (${process.env.PGHOST || 'localhost'}:${process.env.PGPORT || 5432} / ${process.env.PGDATABASE || 'karavali_transit'})`
+  }
+  return 'SQL (SQLite transit.db)'
 }
 
 export function isPostgres() {
@@ -117,7 +150,7 @@ let initDbPromise = null
 export async function initDB() {
   if (initDbPromise) return initDbPromise
   initDbPromise = (async () => {
-    if (process.env.USE_POSTGRES === 'true') {
+    if (usePostgres) {
       try {
         const client = await pgPool.connect()
         await client.query('SELECT 1')
