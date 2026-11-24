@@ -58,6 +58,9 @@ export function getGmailTransporter() {
       user,
       pass,
     },
+    connectionTimeout: 6000,
+    greetingTimeout: 6000,
+    socketTimeout: 8000,
   })
 }
 
@@ -269,6 +272,9 @@ export async function sendOtpEmail({ to, agencyName, otp }) {
     port: 465,
     secure: true,
     auth: { user, pass },
+    connectionTimeout: 6000,
+    greetingTimeout: 6000,
+    socketTimeout: 8000,
   })
 
   const mailOptions = {
