@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: karavali-transit
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: karavali-transit-db
+          property: connectionString
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: OTP_SECRET_SALT
+        generateValue: true
+
+databases:
+  - name: karavali-transit-db
+    plan: free
+    databaseName: karavali_transit
+    user: postgres
