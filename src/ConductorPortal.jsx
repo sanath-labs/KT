@@ -27,6 +27,7 @@ import {
 import { apiUrl, conductorHeaders } from './api.js'
 import { formatIndianMobile, formatToIST } from './transitUtils.js'
 import { getSynchronizedServerTimeMs, useSynchronizedClock } from './istClockService.js'
+import { broadcastBusLocation } from './supabaseClient.js'
 
 function getNow() {
   return getSynchronizedServerTimeMs()
@@ -551,6 +552,11 @@ export default function ConductorPortal({
               token,
             })
           }
+
+          // Broadcast to Supabase Realtime channel
+          try {
+            broadcastBusLocation(telemetryPayload)
+          } catch {}
         },
         (err) => {
           console.warn('Conductor GPS Geolocation Error:', err)

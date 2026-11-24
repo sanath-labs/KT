@@ -117,7 +117,14 @@ test('Real-Time Indian Standard Time (IST) Synchronization Suite', async (t) => 
 
   await t.test('6. Real-Time Journey Search matches against actual IST minutes', async () => {
     const allBuses = await getBuses()
-    const targetBus = allBuses.find((b) => b.origin === 'Mangaluru' && b.destination === 'Kundapura') || allBuses[0]
+    const targetBus =
+      allBuses.find(
+        (b) =>
+          b.origin === 'Mangaluru' &&
+          b.destination === 'Kundapura' &&
+          b.stops &&
+          b.stops.length === 9
+      ) || allBuses[0]
     const targetId = targetBus.bus_id
 
     const activeBuses = {
@@ -149,7 +156,14 @@ test('Real-Time Indian Standard Time (IST) Synchronization Suite', async (t) => 
 
   await t.test('7. Stale GPS Telemetry marks LOCATION STALE and prevents fake LIVE', async () => {
     const allBuses = await getBuses()
-    const targetBus = allBuses.find((b) => b.origin === 'Mangaluru' && b.destination === 'Kundapura') || allBuses[0]
+    const targetBus =
+      allBuses.find(
+        (b) =>
+          b.origin === 'Mangaluru' &&
+          b.destination === 'Kundapura' &&
+          b.stops &&
+          b.stops.length === 9
+      ) || allBuses[0]
     const targetId = targetBus.bus_id
     const staleTime = Date.now() - 300000 // 5 minutes ago
 

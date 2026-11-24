@@ -16,7 +16,8 @@ function App() {
         const urlRole = new URLSearchParams(window.location.search).get('role')
         if (urlRole === 'conductor' || urlRole === 'owner' || urlRole === 'passenger') return urlRole
       }
-      return localStorage.getItem('karavali_role') || 'passenger'
+      // Always open the Start Page by default on initial application load
+      return 'passenger'
     } catch {
       return 'passenger'
     }
@@ -109,6 +110,16 @@ function App() {
       .then((res) => res.json())
       .then((data) => setDbStatus(Boolean(data?.sql_connected || data?.database)))
       .catch(() => setDbStatus(false))
+
+    // Always guarantee the Start Page opens upon fresh application load
+    try {
+      const urlRole = new URLSearchParams(window.location.search).get('role')
+      if (!urlRole) {
+        setRole('passenger')
+        setPassengerScreen(1)
+        localStorage.removeItem('karavali_role')
+      }
+    } catch {}
   }, [])
 
   const handleSelectRole = (newRole) => {
@@ -123,7 +134,11 @@ function App() {
     }
     setRole(newRole)
     try {
-      localStorage.setItem('karavali_role', newRole)
+      if (newRole === 'passenger') {
+        localStorage.removeItem('karavali_role')
+      } else {
+        localStorage.setItem('karavali_role', newRole)
+      }
     } catch {}
     if (newRole === 'passenger') setPassengerScreen(1)
   }

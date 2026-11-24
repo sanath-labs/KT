@@ -14,10 +14,15 @@ import { apiUrl, socketUrl } from './api.js'
 import { OFFICIAL_9_CORRIDOR_STOPS } from './transitUtils.js'
 import { NH66_HIGHWAY_POLYLINE } from './nh66RouteGeometry.js'
 import JourneySearchCard from './components/JourneySearchCard.jsx'
+import PopularJourneys from './components/PopularJourneys.jsx'
+import RouteStrip from './components/RouteStrip.jsx'
 import BusCard from './components/BusCard.jsx'
 import RouteTimeline from './components/RouteTimeline.jsx'
 import LiveTrackingHud from './components/LiveTrackingHud.jsx'
-import { busLiveIcon, stopPinIcon } from './mapIcons.js'
+import { createRotatingBusIcon, stopPinIcon } from './mapIcons.js'
+import { GoogleMapsController } from './components/GoogleMapsController.jsx'
+import { matchGpsToNH66Road, calculateRoadProgressAndNextStop } from './roadMatchingService.js'
+import { subscribeToRealtimeBusTracking } from './supabaseClient.js'
 import { MapViewportController } from './components/MapMarkers.jsx'
 import { getSynchronizedServerTimeMs, useSynchronizedClock } from './istClockService.js'
 
@@ -130,8 +135,23 @@ export default function PassengerPortal({
       }))
     })
 
+    // Supabase Realtime fallback & live subscription
+    const unsubSupabase = subscribeToRealtimeBusTracking((data) => {
+      if (!data || !data.bus_id) return
+      setLiveTelemetry((prev) => ({
+        ...prev,
+        [data.bus_id]: {
+          ...(prev[data.bus_id] || {}),
+          ...data,
+          timestamp: data.timestamp || Date.now(),
+        },
+      }))
+      setSecondsAgo(0)
+    })
+
     return () => {
       socket.disconnect()
+      if (typeof unsubSupabase === 'function') unsubSupabase()
     }
   }, [])
 
@@ -435,6 +455,8 @@ export default function PassengerPortal({
     return 'OFFLINE'
   }, [activeSelectedBus, trackedTelemetry, hasLiveCoordinates])
 
+  const [isFollowingBus, setIsFollowingBus] = useState(true)
+
   const busCoords = useMemo(() => {
     if (hasLiveCoordinates) {
       return [trackedTelemetry.latitude, trackedTelemetry.longitude]
@@ -442,6 +464,60 @@ export default function PassengerPortal({
     // Default corridor center (Kaup / Padubidri) for map centering when bus has not yet transmitted GPS
     return [13.2208, 74.7431]
   }, [hasLiveCoordinates, trackedTelemetry])
+
+  // Map match raw GPS coordinates to actual NH-66 highway road geometry
+  const roadMatch = useMemo(() => {
+    if (!hasLiveCoordinates) return null
+    return matchGpsToNH66Road(
+      trackedTelemetry.latitude,
+      trackedTelemetry.longitude,
+      trackedTelemetry.accuracy || 10
+    )
+  }, [hasLiveCoordinates, trackedTelemetry?.latitude, trackedTelemetry?.longitude, trackedTelemetry?.accuracy])
+
+  // Road distance progress, nearest stop, next stop, and ETA along NH-66
+  const roadProgress = useMemo(() => {
+    if (!hasLiveCoordinates) return null
+    return calculateRoadProgressAndNextStop(
+      trackedTelemetry.latitude,
+      trackedTelemetry.longitude,
+      trackedTelemetry.speed || 0,
+      destination
+    )
+  }, [hasLiveCoordinates, trackedTelemetry?.latitude, trackedTelemetry?.longitude, trackedTelemetry?.speed, destination])
+
+  // Snapped road coordinate or raw GPS coordinate for the moving bus marker
+  const movingBusLatLng = useMemo(() => {
+    if (roadMatch?.isMatched) {
+      return [roadMatch.roadLat, roadMatch.roadLng]
+    }
+    if (hasLiveCoordinates) {
+      return [trackedTelemetry.latitude, trackedTelemetry.longitude]
+    }
+    return busCoords
+  }, [roadMatch, hasLiveCoordinates, trackedTelemetry, busCoords])
+
+  // Dynamic Google Maps-style rotating bus marker with actual heading and speed badge
+  const movingBusIcon = useMemo(() => {
+    const heading =
+      typeof trackedTelemetry?.heading === 'number' && trackedTelemetry.heading > 0
+        ? trackedTelemetry.heading
+        : roadProgress?.heading ?? roadMatch?.bearing ?? 0
+
+    return createRotatingBusIcon({
+      heading,
+      speed: trackedTelemetry?.speed || 0,
+      vehicleNumber: activeSelectedBus?.vehicle_number || '',
+      status: currentTrackingStatus,
+    })
+  }, [
+    trackedTelemetry?.heading,
+    trackedTelemetry?.speed,
+    roadProgress?.heading,
+    roadMatch?.bearing,
+    activeSelectedBus?.vehicle_number,
+    currentTrackingStatus,
+  ])
 
   // Full corridor 9-stop timeline list for Screen 3
   const corridorTimelineStops = useMemo(() => {
@@ -483,7 +559,7 @@ export default function PassengerPortal({
   }, [])
 
   // ==========================================================================
-  // PAGE 1: PASSENGER HOMEPAGE (CLEAN, ACCESSIBLE, RESPONSIVE LAYOUT)
+  // PAGE 1: PASSENGER HOMEPAGE / START PAGE
   // ==========================================================================
   const renderHomepage = () => (
     <div className="w-full flex flex-col space-y-5 select-none">
@@ -510,6 +586,44 @@ export default function PassengerPortal({
         loadingBuses={loadingBuses}
         lang={lang}
       />
+
+      {/* 2. Popular Journeys along NH-66 Corridor */}
+      <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs">
+        <PopularJourneys
+          routes={[
+            { from: 'Mangaluru', to: 'Udupi' },
+            { from: 'Surathkal', to: 'Udupi' },
+            { from: 'Mangaluru', to: 'Kundapura' },
+            { from: 'Mulki', to: 'Kaup' },
+            { from: 'Udupi', to: 'Kundapura' },
+          ]}
+          onSelectJourney={(from, to) => {
+            setCurrentStop(from)
+            setDestination(to)
+            handleSearchBuses(from, to, desiredTime, true)
+          }}
+          lang={lang}
+        />
+      </div>
+
+      {/* 3. 9 Official Corridor Stops Quick Selection */}
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-2xs space-y-2">
+        <div className="text-xs font-black text-slate-700 uppercase tracking-wider">
+          {lang === 'kn' ? '೯ ಅಧಿಕೃತ ಹೆದ್ದಾರಿ ನಿಲ್ದಾಣಗಳು (NH-66)' : '9 Official NH-66 Corridor Stops'}
+        </div>
+        <p className="text-xs text-slate-500 font-medium">
+          {lang === 'kn'
+            ? 'ನಿಲ್ದಾಣವನ್ನು ಆರಿಸಿ ನೇರವಾಗಿ ಪ್ರಯಾಣ ಹುಡುಕಿ:'
+            : 'Click any stop to quickly set it as your boarding point:'}
+        </p>
+        <div className="pt-1">
+          <RouteStrip
+            onSelectStop={(stopName) => {
+              handleSelectFromStop(stopName)
+            }}
+          />
+        </div>
+      </div>
     </div>
   )
 
@@ -841,9 +955,9 @@ export default function PassengerPortal({
       {/* Large Responsive Map Container */}
       <div className="relative w-full h-[560px] sm:h-[640px] md:h-[700px] rounded-2xl overflow-hidden border border-slate-200 shadow-xs">
         <MapContainer
-          center={busCoords}
-          zoom={11}
-          zoomControl={true}
+          center={movingBusLatLng}
+          zoom={12}
+          zoomControl={false}
           className="w-full h-full z-0"
         >
           <TileLayer
@@ -851,12 +965,29 @@ export default function PassengerPortal({
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
-          {/* Continuous Blue Polyline along actual NH-66 highway road */}
+          {/* Google Maps floating Recenter/Follow and Zoom controls */}
+          <GoogleMapsController
+            busCoords={movingBusLatLng}
+            isFollowingBus={isFollowingBus}
+            setIsFollowingBus={setIsFollowingBus}
+            corridorBounds={mapBounds}
+            hasLiveCoords={hasLiveCoordinates}
+          />
+
+          {/* Continuous Dual-Layer Highway Road Polyline along verified NH-66 */}
+          <Polyline
+            positions={polylineCoordinates}
+            color="#1d4ed8"
+            weight={9}
+            opacity={0.35}
+            lineCap="round"
+            lineJoin="round"
+          />
           <Polyline
             positions={polylineCoordinates}
             color="#2563eb"
-            weight={6}
-            opacity={0.9}
+            weight={5}
+            opacity={0.95}
             lineCap="round"
             lineJoin="round"
           />
@@ -889,14 +1020,18 @@ export default function PassengerPortal({
             )
           })}
 
-          {/* Live Bus Marker (Strictly when actual GPS coordinates exist) */}
+          {/* Moving Bus Marker (Smooth Road-Snapped or High-Precision GPS) */}
           {activeSelectedBus && hasLiveCoordinates && (
-            <Marker position={[trackedTelemetry.latitude, trackedTelemetry.longitude]} icon={busLiveIcon}>
+            <Marker position={movingBusLatLng} icon={movingBusIcon}>
               <Popup>
                 <div className="text-xs">
                   <strong>{activeSelectedBus.bus_name}</strong>
                   <br />
                   {activeSelectedBus.vehicle_number}
+                  <br />
+                  Speed: {trackedTelemetry?.speed || 0} km/h • Heading: {Math.round(trackedTelemetry?.heading || 0)}°
+                  <br />
+                  Road: {roadProgress?.currentRoadName || 'NH-66 Highway'}
                   <br />
                   Status: {currentTrackingStatus}
                 </div>
@@ -904,7 +1039,9 @@ export default function PassengerPortal({
             </Marker>
           )}
 
-          <MapViewportController bounds={mapBounds} center={busCoords} />
+          {!hasLiveCoordinates && (
+            <MapViewportController bounds={mapBounds} center={busCoords} />
+          )}
         </MapContainer>
 
         {/* Informational overlay when conductor has not yet started GPS telemetry */}
@@ -922,6 +1059,7 @@ export default function PassengerPortal({
           status={currentTrackingStatus}
           secondsAgo={secondsAgo}
           journeyInfo={{ from: currentStop, to: destination }}
+          roadProgress={roadProgress}
         />
       </div>
     </div>

@@ -3,6 +3,12 @@
    Department of Public Transport • Coastal Karnataka
    ========================================================================== */
 
+/* Google Maps-style smooth gliding bus marker animation */
+.leaflet-marker-pane > .google-maps-bus-marker {
+  transition: transform 0.8s cubic-bezier(0.25, 0.1, 0.25, 1) !important;
+  will-change: transform;
+}
+
 .transit-app {
   min-height: 100vh;
   display: flex;
