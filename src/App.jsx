@@ -52,7 +52,7 @@ function App() {
   const [liveBuses, setLiveBuses] = useState({})
 
   // Conductor bus preset (passed from Fleet Owner switch action)
-  const [conductorVehicleInput, setConductorVehicleInput] = useState('KA-19-AB-4509')
+  const [conductorVehicleInput, setConductorVehicleInput] = useState('')
   const [, setConductorPinInput] = useState('')
 
   // Fleet Owner Session State (persisted across page reloads)

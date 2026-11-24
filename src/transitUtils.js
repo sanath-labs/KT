@@ -607,22 +607,12 @@ export function calculateCorridorDistanceBetweenStops(startStopId, endStopId) {
  * - Category: 'PRESENT', 'APPROACHING', 'EN_ROUTE', 'PASSED'
  */
 export function calculateLiveBusProgressAndEta(busLat, busLng, busSpeed, boardingStop, lastTelemetryAt = Date.now()) {
-  const straightDistKm = calculateHaversineKm(busLat, busLng, boardingStop.latitude, boardingStop.longitude)
-  const isPastStop = Number(busLat) > Number(boardingStop.latitude) + 0.005 && straightDistKm > 0.4
+  const stopLat = boardingStop?.latitude || 12.9141
+  const stopLng = boardingStop?.longitude || 74.8560
+  const straightDistKm = calculateHaversineKm(busLat, busLng, stopLat, stopLng)
   const isAtStop = straightDistKm <= 0.4
 
-  if (isPastStop) {
-    return {
-      has_passed: true,
-      is_at_stop: false,
-      is_approaching: false,
-      distance_km: straightDistKm,
-      eta_minutes: 0,
-      category: 'PASSED',
-    }
-  }
-
-  // Winding road distance along NH-66 corridor: approx 1.08x straight line for coastal highway
+  // Winding road distance along corridor: approx 1.08x straight line
   const distanceKm = Math.max(0, isAtStop ? 0 : Number((straightDistKm * 1.08).toFixed(1)))
 
   // Conductor speed or coastal highway average (32 km/h) if stopped at signals
