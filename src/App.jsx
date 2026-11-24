@@ -10,7 +10,17 @@ import './App.css'
 const socket = io(socketUrl)
 
 function App() {
-  const [role, setRole] = useState('passenger') // 'passenger' | 'conductor' | 'owner'
+  const [role, setRole] = useState(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const urlRole = new URLSearchParams(window.location.search).get('role')
+        if (urlRole === 'conductor' || urlRole === 'owner' || urlRole === 'passenger') return urlRole
+      }
+      return localStorage.getItem('karavali_role') || 'passenger'
+    } catch {
+      return 'passenger'
+    }
+  }) // 'passenger' | 'conductor' | 'owner'
   const [passengerScreen, setPassengerScreen] = useState(1) // 1: Home, 2: Radar/Results, 3: Details, 4: Tracking
   const [preselectedStop, setPreselectedStop] = useState(null)
   const [activeModal, setActiveModal] = useState(null)
@@ -112,6 +122,9 @@ function App() {
       } catch {}
     }
     setRole(newRole)
+    try {
+      localStorage.setItem('karavali_role', newRole)
+    } catch {}
     if (newRole === 'passenger') setPassengerScreen(1)
   }
 
@@ -159,15 +172,15 @@ function App() {
         dbStatus={dbStatus}
         onSelectCorridorStop={(stopName) => {
           setPreselectedStop(stopName)
-          setRole('passenger')
+          handleSelectRole('passenger')
           setPassengerScreen(1)
         }}
         onNavigateHome={() => {
-          setRole('passenger')
+          handleSelectRole('passenger')
           setPassengerScreen(1)
         }}
         onNavigateRadar={() => {
-          setRole('passenger')
+          handleSelectRole('passenger')
           setPassengerScreen(2)
         }}
         activeModal={activeModal}
@@ -193,8 +206,7 @@ function App() {
             initialVehicleNumber={conductorVehicleInput}
             initialAgencyEmail={isOwnerAuthenticated ? ownerEmail : ''}
             onExitToPassenger={() => {
-              setRole('passenger')
-              setPassengerScreen(1)
+              handleSelectRole('passenger')
             }}
           />
         )}
@@ -210,8 +222,7 @@ function App() {
             ownerToken={ownerToken}
             setOwnerToken={setOwnerToken}
             onExitToPassenger={() => {
-              setRole('passenger')
-              setPassengerScreen(1)
+              handleSelectRole('passenger')
             }}
             onSwitchToConductor={(vehicleNumber, pin) => {
               setConductorVehicleInput(vehicleNumber)
@@ -235,8 +246,7 @@ function App() {
             <button
               type="button"
               onClick={() => {
-                setRole('passenger')
-                setPassengerScreen(1)
+                handleSelectRole('passenger')
               }}
               className="hover:text-blue-600 cursor-pointer transition"
             >
