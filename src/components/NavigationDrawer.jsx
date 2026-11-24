@@ -2,7 +2,6 @@ import {
   X,
   Bus,
   Navigation,
-  Compass,
   Building,
   Radio,
   HelpCircle,
@@ -92,18 +91,6 @@ export default function NavigationDrawer({
           >
             <Bus size={17} className="text-blue-600" />
             <span>Passenger Radar</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              onClose()
-              onOpenModal('findStop')
-            }}
-            className="w-full px-3 py-2.5 rounded-xl text-left font-bold text-slate-700 hover:bg-slate-100 flex items-center gap-3 transition cursor-pointer"
-          >
-            <Compass size={17} className="text-blue-600" />
-            <span>Find Bus Stop</span>
           </button>
 
           <div className="my-2 border-t border-slate-100" />

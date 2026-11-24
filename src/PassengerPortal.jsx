@@ -6,8 +6,6 @@ import {
   MapPin,
   Flag,
   RotateCw,
-  Compass,
-  ArrowRight,
 } from 'lucide-react'
 import io from 'socket.io-client'
 import { MapContainer, TileLayer, Polyline, Marker, Popup } from 'react-leaflet'
@@ -16,7 +14,6 @@ import { apiUrl, socketUrl } from './api.js'
 import { OFFICIAL_9_CORRIDOR_STOPS } from './transitUtils.js'
 import { NH66_HIGHWAY_POLYLINE } from './nh66RouteGeometry.js'
 import JourneySearchCard from './components/JourneySearchCard.jsx'
-import PopularJourneys from './components/PopularJourneys.jsx'
 import BusCard from './components/BusCard.jsx'
 import RouteTimeline from './components/RouteTimeline.jsx'
 import LiveTrackingHud from './components/LiveTrackingHud.jsx'
@@ -77,14 +74,6 @@ export default function PassengerPortal({
   const [secondsAgo, setSecondsAgo] = useState(15)
   const [liveTelemetry, setLiveTelemetry] = useState({})
   const socketRef = useRef(null)
-
-  // Popular Routes
-  const POPULAR_ROUTES = [
-    { from: 'Mangaluru', to: 'Udupi' },
-    { from: 'Surathkal', to: 'Udupi' },
-    { from: 'Mangaluru', to: 'Kundapura' },
-    { from: 'Mulki', to: 'Udupi' },
-  ]
 
   // Setup WebSocket Telemetry Connection
   useEffect(() => {
@@ -511,49 +500,6 @@ export default function PassengerPortal({
         loadingBuses={loadingBuses}
         lang={lang}
       />
-
-      {/* 2. Popular Journeys Shortcuts */}
-      <PopularJourneys
-        routes={POPULAR_ROUTES}
-        onSelectJourney={(from, to) => handleSearchBuses(from, to)}
-        lang={lang}
-      />
-
-      {/* 3. Compact "Find a Bus Stop" Helper Card */}
-      <div
-        onClick={() => onOpenFindStop && onOpenFindStop()}
-        className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-2xs hover:border-blue-400 hover:shadow-xs flex items-center justify-between gap-4 cursor-pointer transition"
-        role="button"
-        tabIndex={0}
-        aria-label="Find nearest bus stop helper"
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            if (onOpenFindStop) onOpenFindStop()
-          }
-        }}
-      >
-        <div className="flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-            <Compass size={22} strokeWidth={2.2} />
-          </div>
-          <div>
-            <h2 className="text-sm font-black text-slate-900 m-0">
-              {lang === 'kn' ? 'ನಿಮ್ಮ ಸಮೀಪದ ಬಸ್ ನಿಲ್ದಾಣ ಹುಡುಕಿ' : 'Need help identifying your nearest bus stop?'}
-            </h2>
-            <p className="text-xs text-slate-600 font-medium m-0 mt-0.5">
-              {lang === 'kn'
-                ? 'ಎನ್ಐಟಿಕೆ, ಆಸ್ಪತ್ರೆಗಳು, ದೇವಸ್ಥಾನಗಳಂತಹ ಸ್ಥಳಗಳಿಂದ ಹುಡುಕಿ ಅಥವಾ ಜಿಪಿಎಸ್ ದೂರವನ್ನು ಬಳಸಿ.'
-                : 'Search by familiar landmarks such as NITK, hospitals, temples, or use on-demand distance lookup.'}
-            </p>
-          </div>
-        </div>
-        <span className="text-xs font-black text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3.5 py-2 rounded-xl shrink-0 transition flex items-center gap-1">
-          <span>{lang === 'kn' ? 'ನಿಲ್ದಾಣ ಹುಡುಕಿ' : 'Find a Stop'}</span>
-          <ArrowRight size={13} strokeWidth={2.4} />
-        </span>
-      </div>
-
     </div>
   )
 
