@@ -98,6 +98,8 @@ export default function ConductorPortal({
   const [shiftStartTime, setShiftStartTime] = useState(null)
   const [shiftDurationMinutes, setShiftDurationMinutes] = useState(0)
   const [showShiftSummaryModal, setShowShiftSummaryModal] = useState(false)
+  const [showLocationPromptModal, setShowLocationPromptModal] = useState(false)
+  const [locationPromptReason, setLocationPromptReason] = useState('enable') // 'enable' | 'denied' | 'unavailable'
 
   // Live GPS Telemetry from Conductor's Android Phone (Strictly Sensor-Driven, NO Simulation)
   const [geoWatchId, setGeoWatchId] = useState(null)
@@ -467,6 +469,45 @@ export default function ConductorPortal({
     }
   }
 
+  // Proactively check geolocation permissions when active on shift
+  useEffect(() => {
+    if (isOnShift && !isLiveTracking && typeof navigator !== 'undefined' && navigator.permissions?.query) {
+      navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+        if (result.state === 'denied') {
+          setLocationPromptReason('denied')
+          setShowLocationPromptModal(true)
+        }
+      }).catch(() => {})
+    }
+  }, [isOnShift, isLiveTracking])
+
+  // Explicit Location request handler from the popup modal
+  const handleRequestLocationAccess = () => {
+    if (!('geolocation' in navigator)) {
+      alert('HTML5 Geolocation is not supported by your browser.')
+      setShowLocationPromptModal(false)
+      return
+    }
+
+    setGpsStatus('REQUESTING')
+    navigator.geolocation.getCurrentPosition(
+      () => {
+        setShowLocationPromptModal(false)
+        handleStartLiveTracking()
+      },
+      (err) => {
+        if (err.code === 1) {
+          setLocationPromptReason('denied')
+          setGpsErrorMessage('Location permission was denied. Please allow location in your browser site settings.')
+        } else if (err.code === 2) {
+          setLocationPromptReason('unavailable')
+          setGpsErrorMessage('Device GPS is turned off. Please toggle Location ON in your phone quick settings.')
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+  }
+
   // =========================================================================
   // REAL-TIME GPS BUS TRACKING (ACTUAL SMARTPHONE SENSOR TELEMETRY)
   // NO SIMULATION, NO HARDCODED WAYPOINTS, HIGH-ACCURACY HARDWARE GPS
@@ -478,6 +519,7 @@ export default function ConductorPortal({
       setGpsPermissionState('unsupported')
       setGpsStatus('ERROR')
       setGpsErrorMessage('HTML5 Geolocation is not supported by your browser.')
+      setShowLocationPromptModal(true)
       return
     }
 
@@ -516,6 +558,7 @@ export default function ConductorPortal({
           setGpsStatus('LIVE')
           setIsLiveTracking(true)
           setGpsErrorMessage('')
+          setShowLocationPromptModal(false)
 
           const token =
             conductorToken || localStorage.getItem('karavali_conductor_token') || ''
@@ -567,10 +610,14 @@ export default function ConductorPortal({
           let userMsg = 'Unable to acquire GPS signal from your device.'
           if (err.code === 1) {
             setGpsPermissionState('denied')
+            setLocationPromptReason('denied')
+            setShowLocationPromptModal(true)
             userMsg =
               'Location permission was denied. Please allow location access in your mobile browser settings to stream GPS.'
           } else if (err.code === 2) {
             setGpsPermissionState('prompt')
+            setLocationPromptReason('unavailable')
+            setShowLocationPromptModal(true)
             userMsg =
               'GPS position unavailable. Please ensure GPS/Location is enabled on your Android phone.'
           } else if (err.code === 3) {
@@ -591,6 +638,7 @@ export default function ConductorPortal({
     } catch (launchErr) {
       setGpsStatus('ERROR')
       setGpsErrorMessage(`Failed to start geolocation: ${launchErr.message}`)
+      setShowLocationPromptModal(true)
     }
   }
 
@@ -1145,6 +1193,91 @@ export default function ConductorPortal({
                       Confirm End Duty
                     </button>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* LOCATION PERMISSION / GPS TURN-ON PROMPT MODAL */}
+        {showLocationPromptModal && (
+          <div className="conductor-modal-backdrop" onClick={() => setShowLocationPromptModal(false)}>
+            <div className="conductor-modal-card max-w-md" onClick={(e) => e.stopPropagation()}>
+              <div className="conductor-modal-header">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                    <MapPin size={20} strokeWidth={2.4} />
+                  </div>
+                  <div>
+                    <h3 className="conductor-modal-title">
+                      {locationPromptReason === 'denied' ? 'Location Permission Blocked' : 'Turn On Location (GPS)'}
+                    </h3>
+                    <p className="text-[11px] text-slate-500 font-semibold m-0">
+                      Required for live bus tracking
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowLocationPromptModal(false)}
+                  className="conductor-modal-close"
+                  aria-label="Close"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="space-y-4 text-xs pt-1">
+                <div className="p-3.5 bg-blue-50/70 border border-blue-200/80 rounded-2xl text-blue-950 space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold text-blue-950">
+                    <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+                    <span>GPS location is not active on this device</span>
+                  </div>
+                  <p className="m-0 text-slate-700 leading-relaxed text-[11px]">
+                    To broadcast your bus&apos;s real-time position to waiting passengers, your phone&apos;s GPS and browser location permission must be turned on.
+                  </p>
+                </div>
+
+                <div className="space-y-2.5 bg-slate-50 border border-slate-200 rounded-2xl p-3.5">
+                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">
+                    How to enable location:
+                  </span>
+                  
+                  <div className="flex items-start gap-2.5">
+                    <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                      1
+                    </span>
+                    <p className="m-0 text-slate-700 font-medium text-xs leading-snug">
+                      <strong>Turn ON Device GPS:</strong> Swipe down from the top of your phone screen and tap the <strong>Location / GPS</strong> toggle to turn it on.
+                    </p>
+                  </div>
+
+                  <div className="flex items-start gap-2.5">
+                    <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                      2
+                    </span>
+                    <p className="m-0 text-slate-700 font-medium text-xs leading-snug">
+                      <strong>Allow Browser Access:</strong> Tap the lock or tune icon in your browser address bar and set Location to <strong>&quot;Allow&quot;</strong>.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowLocationPromptModal(false)}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs transition cursor-pointer"
+                  >
+                    Dismiss
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRequestLocationAccess}
+                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-xs transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Navigation size={14} />
+                    <span>Turn On &amp; Allow Location</span>
+                  </button>
                 </div>
               </div>
             </div>

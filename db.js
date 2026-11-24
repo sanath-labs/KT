@@ -74,6 +74,28 @@ export function getSqliteDb() {
           if (cb) cb(null, null)
           return _sqliteDb
         },
+        prepare: (...args) => ({
+          run: (...sArgs) => {
+            const cb = findCb(sArgs)
+            if (cb) cb(null)
+          },
+          finalize: (cb) => {
+            if (cb) cb()
+          },
+        }),
+        exec: (...args) => {
+          const cb = findCb(args)
+          if (cb) cb(null)
+          return _sqliteDb
+        },
+        each: (...args) => {
+          const cb = findCb(args)
+          if (cb) cb(null, 0)
+          return _sqliteDb
+        },
+        close: (cb) => {
+          if (cb) cb(null)
+        },
         serialize: (fn) => fn && fn(),
         configure: () => {},
       }
