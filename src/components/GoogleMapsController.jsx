@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useMap } from 'react-leaflet'
-import { Navigation, Maximize2, Plus, Minus, Compass } from 'lucide-react'
+import { Navigation, Maximize2, Plus, Minus, Layers, ExternalLink } from 'lucide-react'
 
 /**
  * GoogleMapsController
@@ -8,7 +8,9 @@ import { Navigation, Maximize2, Plus, Minus, Compass } from 'lucide-react'
  * - Floating Follow-Bus / Recenter button (locks camera smoothly onto moving bus)
  * - Auto-disengage follow mode when passenger pans or drags the map manually
  * - Route Overview button (fits full Mangaluru ➔ Kundapura corridor)
+ * - Google Maps Layer Switcher (Default Street Map vs Satellite View)
  * - Custom Google Maps-style floating Zoom In / Zoom Out controls
+ * - Direct "Open in Google Maps" external navigation link
  */
 export function GoogleMapsController({
   busCoords,
@@ -16,6 +18,8 @@ export function GoogleMapsController({
   setIsFollowingBus,
   corridorBounds,
   hasLiveCoords,
+  mapType = 'roadmap',
+  setMapType,
 }) {
   const map = useMap()
 
@@ -99,11 +103,46 @@ export function GoogleMapsController({
           type="button"
           onClick={handleFitRouteOverview}
           className="w-11 h-11 flex items-center justify-center text-slate-700 hover:text-blue-600 hover:bg-slate-100 transition cursor-pointer border-t border-slate-100"
-          title="Route Overview (Mangaluru ➔ Kundapura)"
+          title="Route Overview (Whole Corridor)"
           aria-label="Route Overview"
         >
           <Maximize2 size={18} strokeWidth={2.2} />
         </button>
+
+        {/* Google Maps Layer Switcher: Street vs Satellite */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            if (setMapType) {
+              setMapType((prev) => (prev === 'satellite' ? 'roadmap' : 'satellite'))
+            }
+          }}
+          className={`w-11 h-11 flex items-center justify-center transition cursor-pointer border-t border-slate-100 ${
+            mapType === 'satellite'
+              ? 'bg-blue-600 text-white'
+              : 'text-slate-700 hover:text-blue-600 hover:bg-slate-100'
+          }`}
+          title={mapType === 'satellite' ? 'Switch to Google Map view' : 'Switch to Google Satellite view'}
+          aria-label="Toggle Google Maps Satellite"
+        >
+          <Layers size={18} strokeWidth={2.2} />
+        </button>
+
+        {/* Open in Google Maps */}
+        {busCoords && busCoords[0] && busCoords[1] && (
+          <a
+            href={`https://www.google.com/maps/dir/?api=1&destination=${busCoords[0]},${busCoords[1]}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="w-11 h-11 flex items-center justify-center text-slate-700 hover:text-blue-600 hover:bg-slate-100 transition cursor-pointer border-t border-slate-100"
+            title="Open live location in Google Maps app"
+            aria-label="Open in Google Maps"
+          >
+            <ExternalLink size={17} strokeWidth={2.2} />
+          </a>
+        )}
       </div>
 
       {/* Google Maps-style Zoom In / Out Stack */}

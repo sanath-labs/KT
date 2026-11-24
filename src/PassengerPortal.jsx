@@ -89,6 +89,7 @@ export default function PassengerPortal({
   // Real-time Telemetry & Seconds Elapsed Timer (Screen 4)
   const [secondsAgo, setSecondsAgo] = useState(15)
   const [liveTelemetry, setLiveTelemetry] = useState({})
+  const [mapType, setMapType] = useState('roadmap') // 'roadmap' | 'satellite'
   const socketRef = useRef(null)
 
   // Setup WebSocket Telemetry Connection
@@ -921,33 +922,43 @@ export default function PassengerPortal({
           zoomControl={false}
           className="w-full h-full z-0"
         >
+          {/* Google Maps Base Tile Layer (Default Street Map vs Satellite View) */}
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            key={`google-tile-${mapType}`}
+            attribution='&copy; Google Maps'
+            url={
+              mapType === 'satellite'
+                ? 'https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
+                : 'https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}'
+            }
+            subdomains={['mt0', 'mt1', 'mt2', 'mt3']}
+            maxZoom={20}
           />
 
-          {/* Google Maps floating Recenter/Follow and Zoom controls */}
+          {/* Google Maps floating Recenter/Follow, Satellite Toggle, and Zoom controls */}
           <GoogleMapsController
             busCoords={movingBusLatLng}
             isFollowingBus={isFollowingBus}
             setIsFollowingBus={setIsFollowingBus}
             corridorBounds={mapBounds}
             hasLiveCoords={hasLiveCoordinates}
+            mapType={mapType}
+            setMapType={setMapType}
           />
 
-          {/* Continuous Dual-Layer Highway Road Polyline along verified route */}
+          {/* Continuous Dual-Layer Google Maps Highway Road Polyline along verified route */}
           <Polyline
             positions={polylineCoordinates}
-            color="#1d4ed8"
-            weight={9}
+            color="#1967D2"
+            weight={10}
             opacity={0.35}
             lineCap="round"
             lineJoin="round"
           />
           <Polyline
             positions={polylineCoordinates}
-            color="#2563eb"
-            weight={5}
+            color="#4285F4"
+            weight={6}
             opacity={0.95}
             lineCap="round"
             lineJoin="round"
