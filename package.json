@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "test": "node --test --experimental-test-isolation=none tests/*.test.js",
     "simulate": "node scripts/simulate-bus.js",
-    "check": "node scripts/health-check.js"
+    "check": "node scripts/health-check.js",
+    "db:inspect": "node scripts/inspect-db.js"
   },
   "dependencies": {
     "cors": "^2.8.6",
