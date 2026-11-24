@@ -135,9 +135,12 @@ export default function PassengerPortal({
     }
   }, [])
 
-  // Initial Bus Search on Mount
+  // Initial Bus Search on Mount - only auto-search if explicitly started on Screen 2 (Passenger Radar)
+  // Otherwise, always stay on the Dashboard (Screen 1 - Journey Search)
   useEffect(() => {
-    handleSearchBuses('Surathkal', 'Udupi', false)
+    if (initialScreen === 2) {
+      handleSearchBuses(currentStop, destination, desiredTime, true)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -503,7 +506,7 @@ export default function PassengerPortal({
         onSelectFromStop={handleSelectFromStop}
         onSelectToStop={(stop) => setDestination(stop)}
         onSwapStops={handleSwapStops}
-        onSearchBuses={() => handleSearchBuses()}
+        onSearchBuses={() => handleSearchBuses(currentStop, destination, desiredTime, true)}
         loadingBuses={loadingBuses}
         lang={lang}
       />
