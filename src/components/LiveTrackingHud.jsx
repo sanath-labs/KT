@@ -1,6 +1,11 @@
 import { useState } from 'react'
 import { Bus, Clock, AlertCircle, Compass, Gauge, Shield, ChevronDown, ChevronUp, MapPin } from 'lucide-react'
-import { formatToIST, OFFICIAL_9_CORRIDOR_STOPS } from '../transitUtils.js'
+import {
+  formatToIST,
+  OFFICIAL_9_CORRIDOR_STOPS,
+  ROUTE_1_KARKALA_MANGALURU_STOPS,
+  ROUTE_2_MANGALURU_KUNDAPURA_STOPS,
+} from '../transitUtils.js'
 
 export default function LiveTrackingHud({
   bus,
@@ -14,6 +19,25 @@ export default function LiveTrackingHud({
   const [showMilestones, setShowMilestones] = useState(false)
 
   if (!bus) return null
+
+  const isRoute1 =
+    bus?.route_id === 'R1' ||
+    journeyInfo?.route_id === 'R1' ||
+    bus?.origin === 'Karkala' ||
+    bus?.destination === 'Karkala' ||
+    journeyInfo?.to === 'Karkala' ||
+    journeyInfo?.from === 'Karkala'
+
+  const corridorStops =
+    journeyInfo?.stops && journeyInfo.stops.length > 0
+      ? journeyInfo.stops
+      : isRoute1
+      ? ROUTE_1_KARKALA_MANGALURU_STOPS
+      : ROUTE_2_MANGALURU_KUNDAPURA_STOPS
+
+  const highwayName = isRoute1 ? 'NH-169' : 'NH-66'
+  const defaultDest = isRoute1 ? 'Mangaluru' : 'Kundapura'
+  const defaultRoadName = isRoute1 ? 'NH-169 Karkala–Mangaluru' : 'NH-66 Coastal Highway'
 
   // Compute display status: LIVE, GPS WEAK, LOCATION STALE, OFFLINE
   const rawStatus = (
@@ -61,10 +85,10 @@ export default function LiveTrackingHud({
   const accuracyMeters = Math.round(Number(telemetry?.accuracy) || 0)
 
   // Destination and next stop details
-  const displayNextStop = roadProgress?.nextStop || nextStop || journeyInfo?.to || bus.destination || 'Kundapura'
+  const displayNextStop = roadProgress?.nextStop || nextStop || journeyInfo?.to || bus.destination || defaultDest
   const distToNextKm = roadProgress?.distanceToNextStopKm || 0
-  const roadName = roadProgress?.roadName || 'NH-66 Coastal Highway'
-  const directionStr = roadProgress?.directionOfTravel || 'Northbound (Towards Kundapura)'
+  const roadName = roadProgress?.roadName || defaultRoadName
+  const directionStr = roadProgress?.directionOfTravel || (isRoute1 ? `Towards ${bus.destination || defaultDest}` : 'Northbound (Towards Kundapura)')
 
   // Live ETA vs Owner-scheduled fallback
   const isLiveEta = isLive && roadProgress?.etaMinutesToTarget
@@ -182,24 +206,24 @@ export default function LiveTrackingHud({
           </div>
         )}
 
-        {/* Collapsible NH-66 Corridor Progress Button */}
+        {/* Collapsible Corridor Progress Button */}
         <div>
           <button
             type="button"
             onClick={() => setShowMilestones((prev) => !prev)}
             className="w-full text-xs font-bold text-slate-600 hover:text-blue-600 flex items-center justify-between py-1 transition cursor-pointer"
           >
-            <span>Corridor Stop Milestones (9 Stops)</span>
+            <span>Corridor Stop Milestones ({corridorStops.length} Stops)</span>
             {showMilestones ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
           </button>
 
           {showMilestones && (
             <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between gap-1 overflow-x-auto pb-1 text-[10px]">
-              {OFFICIAL_9_CORRIDOR_STOPS.map((s, idx) => {
+              {corridorStops.map((s, idx) => {
                 const isCurrentNext = s.stop_name.toLowerCase() === displayNextStop.toLowerCase()
                 return (
                   <div
-                    key={s.stop_id}
+                    key={s.stop_id || idx}
                     className={`flex flex-col items-center shrink-0 min-w-[42px] text-center ${
                       isCurrentNext ? 'text-blue-600 font-black' : 'text-slate-500 font-medium'
                     }`}
@@ -228,7 +252,7 @@ export default function LiveTrackingHud({
               <>
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                 <span className="truncate text-emerald-800 font-bold">
-                  Conductor GPS Active on NH-66
+                  Conductor GPS Active on {highwayName}
                 </span>
               </>
             ) : isStale ? (

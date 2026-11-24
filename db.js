@@ -21,6 +21,9 @@ import {
   calculateScheduleAdherence,
   formatToIST,
   getISTDateTime,
+  ALL_UNIQUE_STOPS,
+  SYSTEM_ROUTES,
+  determineRouteForJourney,
 } from './src/transitUtils.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -290,6 +293,25 @@ async function initPostgresSchema() {
       message TEXT NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS routes (
+      route_id TEXT PRIMARY KEY,
+      route_name TEXT NOT NULL,
+      corridor_name TEXT NOT NULL,
+      highway TEXT NOT NULL,
+      total_distance_km REAL NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS route_stops (
+      id SERIAL PRIMARY KEY,
+      route_id TEXT NOT NULL REFERENCES routes(route_id) ON DELETE CASCADE,
+      stop_order INTEGER NOT NULL,
+      stop_name TEXT NOT NULL,
+      planned_duration_min INTEGER DEFAULT 0
+    );
+
+    ALTER TABLE buses ADD COLUMN IF NOT EXISTS route_id TEXT DEFAULT 'R2';
   `)
 
   // Check seed buses
@@ -303,8 +325,8 @@ async function initPostgresSchema() {
 
     for (const b of seedBuses) {
       const ins = await pgPool.query(
-        `INSERT INTO buses (bus_name, vehicle_number, route_number, service_type, origin, destination, is_last_bus, conductor_pin, owner_email, total_seats, departure_time, frequency, journey_duration)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING bus_id`,
+        `INSERT INTO buses (bus_name, vehicle_number, route_number, service_type, origin, destination, is_last_bus, conductor_pin, owner_email, total_seats, departure_time, frequency, journey_duration, route_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'R2') RETURNING bus_id`,
         b
       )
       const busId = ins.rows[0].bus_id
@@ -325,11 +347,53 @@ async function initPostgresSchema() {
     INSERT INTO owners (email, agency_name) VALUES ('rakesh@gmail.com', 'Rakesh Shetty Travels') ON CONFLICT (email) DO NOTHING;
   `)
 
-  await seedRakeshFleetPg()
+  await seedSystemRoutesPg()
   await seedVerifiedBusStopsPg()
+  await seedRakeshFleetPg()
+  await seedRoute1BusesPg()
 
-  console.log('✅ PostgreSQL Database initialized (tables: buses, driver_shifts, gps_telemetry, owners, email_otps, bus_route_stops, conductors, owner_activities, bus_stops, passenger_feedback)')
+  console.log('✅ PostgreSQL Database initialized (tables: buses, driver_shifts, gps_telemetry, owners, email_otps, bus_route_stops, conductors, owner_activities, bus_stops, passenger_feedback, routes, route_stops)')
   return true
+}
+
+async function seedSystemRoutesPg() {
+  try {
+    await pgPool.query(`
+      INSERT INTO routes (route_id, route_name, corridor_name, highway, total_distance_km)
+      VALUES
+        ('R1', 'Karkala – Mangaluru', 'Karkala – Moodbidri – Mangaluru Corridor', 'NH-169', 62.9),
+        ('R2', 'Mangaluru – Kundapura', 'Coastal Highway Corridor', 'NH-66', 104.1)
+      ON CONFLICT (route_id) DO UPDATE SET
+        route_name = EXCLUDED.route_name,
+        corridor_name = EXCLUDED.corridor_name,
+        highway = EXCLUDED.highway,
+        total_distance_km = EXCLUDED.total_distance_km;
+
+      DELETE FROM route_stops WHERE route_id IN ('R1', 'R2');
+
+      INSERT INTO route_stops (route_id, stop_order, stop_name, planned_duration_min)
+      VALUES
+        ('R1', 1, 'Karkala', 0),
+        ('R1', 2, 'Amandar', 15),
+        ('R1', 3, 'Moodbidri', 30),
+        ('R1', 4, 'Yedpa', 45),
+        ('R1', 5, 'Gangi', 55),
+        ('R1', 6, 'Kaikamba', 65),
+        ('R1', 7, 'Mangaluru', 90),
+
+        ('R2', 1, 'Mangaluru', 0),
+        ('R2', 2, 'Kuntikana', 10),
+        ('R2', 3, 'Kulur', 20),
+        ('R2', 4, 'Surathkal', 45),
+        ('R2', 5, 'Mulki', 70),
+        ('R2', 6, 'Padubidri', 85),
+        ('R2', 7, 'Kaup', 100),
+        ('R2', 8, 'Udupi', 140),
+        ('R2', 9, 'Kundapura', 185);
+    `)
+  } catch (err) {
+    console.warn('Could not seed system routes in PostgreSQL:', err.message)
+  }
 }
 
 async function seedRakeshFleetPg() {
@@ -339,6 +403,7 @@ async function seedRakeshFleetPg() {
         bus_name: 'Shri Durga Travels',
         vehicle_number: 'KA 19 AB 1234',
         route_number: '001',
+        route_id: 'R2',
         service_type: 'Non AC',
         origin: 'Mangaluru',
         destination: 'Kundapura',
@@ -364,6 +429,7 @@ async function seedRakeshFleetPg() {
         bus_name: 'Sri Lakshmi Travels',
         vehicle_number: 'KA 20 CD 5678',
         route_number: '002',
+        route_id: 'R2',
         service_type: 'AC',
         origin: 'Mangaluru',
         destination: 'Kundapura',
@@ -389,6 +455,7 @@ async function seedRakeshFleetPg() {
         bus_name: 'Udupi Express',
         vehicle_number: 'KA 21 GH 3456',
         route_number: '004',
+        route_id: 'R2',
         service_type: 'Non AC',
         origin: 'Mangaluru',
         destination: 'Kundapura',
@@ -410,6 +477,58 @@ async function seedRakeshFleetPg() {
           { stop_name: 'Kundapura', planned_arrival: '02:50 PM' },
         ],
       },
+      {
+        bus_name: 'Canara Pinto Deluxe',
+        vehicle_number: 'KA 20 C 8812',
+        route_number: '003',
+        route_id: 'R2',
+        service_type: 'Express',
+        origin: 'Kundapura',
+        destination: 'Mangaluru',
+        total_seats: 50,
+        photo_url: '/images/coastal-private-bus.jpg',
+        departure_time: '07:30 AM',
+        frequency: 'Daily',
+        journey_duration: '3 hours 05 minutes',
+        conductor: { name: 'Dinesh Bhandary', phone: '98458 89012' },
+        stops: [
+          { stop_name: 'Kundapura', planned_arrival: '07:30 AM' },
+          { stop_name: 'Udupi', planned_arrival: '08:15 AM' },
+          { stop_name: 'Kaup', planned_arrival: '08:55 AM' },
+          { stop_name: 'Padubidri', planned_arrival: '09:10 AM' },
+          { stop_name: 'Mulki', planned_arrival: '09:25 AM' },
+          { stop_name: 'Surathkal', planned_arrival: '09:50 AM' },
+          { stop_name: 'Kulur', planned_arrival: '10:15 AM' },
+          { stop_name: 'Kuntikana', planned_arrival: '10:25 AM' },
+          { stop_name: 'Mangaluru', planned_arrival: '10:35 AM' },
+        ],
+      },
+      {
+        bus_name: 'Karavali Royal',
+        vehicle_number: 'KA 19 F 9900',
+        route_number: '005',
+        route_id: 'R2',
+        service_type: 'AC',
+        origin: 'Kundapura',
+        destination: 'Mangaluru',
+        total_seats: 40,
+        photo_url: '/images/coastal-private-bus.jpg',
+        departure_time: '12:00 PM',
+        frequency: 'Daily',
+        journey_duration: '3 hours 05 minutes',
+        conductor: { name: 'Sudhir Devadiga', phone: '98459 90123' },
+        stops: [
+          { stop_name: 'Kundapura', planned_arrival: '12:00 PM' },
+          { stop_name: 'Udupi', planned_arrival: '12:45 PM' },
+          { stop_name: 'Kaup', planned_arrival: '01:25 PM' },
+          { stop_name: 'Padubidri', planned_arrival: '01:40 PM' },
+          { stop_name: 'Mulki', planned_arrival: '01:55 PM' },
+          { stop_name: 'Surathkal', planned_arrival: '02:20 PM' },
+          { stop_name: 'Kulur', planned_arrival: '02:45 PM' },
+          { stop_name: 'Kuntikana', planned_arrival: '02:55 PM' },
+          { stop_name: 'Mangaluru', planned_arrival: '03:05 PM' },
+        ],
+      },
     ]
 
     for (const b of rakeshBuses) {
@@ -421,7 +540,7 @@ async function seedRakeshFleetPg() {
       let busId
       if (exist.rows.length === 0) {
         const ins = await pgPool.query(
-          'INSERT INTO buses (bus_name, vehicle_number, route_number, service_type, origin, destination, is_last_bus, conductor_pin, owner_email, total_seats, photo_url, departure_time, frequency, journey_duration) VALUES ($1, $2, $3, $4, $5, $6, 0, \'4509\', \'rakesh@gmail.com\', $7, $8, $9, $10, $11) RETURNING bus_id',
+          'INSERT INTO buses (bus_name, vehicle_number, route_number, service_type, origin, destination, is_last_bus, conductor_pin, owner_email, total_seats, photo_url, departure_time, frequency, journey_duration, route_id) VALUES ($1, $2, $3, $4, $5, $6, 0, \'4509\', \'rakesh@gmail.com\', $7, $8, $9, $10, $11, $12) RETURNING bus_id',
           [
             b.bus_name,
             cleanVeh,
@@ -434,14 +553,15 @@ async function seedRakeshFleetPg() {
             b.departure_time,
             b.frequency,
             b.journey_duration,
+            b.route_id || 'R2',
           ]
         )
         busId = ins.rows[0].bus_id
       } else {
         busId = exist.rows[0].bus_id
         await pgPool.query(
-          "UPDATE buses SET bus_name = $1, service_type = $2, departure_time = $3, origin = $4, destination = $5, owner_email = 'rakesh@gmail.com' WHERE bus_id = $6",
-          [b.bus_name, b.service_type, b.departure_time, b.origin, b.destination, busId]
+          "UPDATE buses SET bus_name = $1, service_type = $2, departure_time = $3, origin = $4, destination = $5, route_id = $6, owner_email = 'rakesh@gmail.com' WHERE bus_id = $7",
+          [b.bus_name, b.service_type, b.departure_time, b.origin, b.destination, b.route_id || 'R2', busId]
         )
       }
 
@@ -476,9 +596,184 @@ async function seedRakeshFleetPg() {
       }
     }
 
-    await pgPool.query("DELETE FROM buses WHERE owner_email = 'rakesh@gmail.com' AND UPPER(REPLACE(vehicle_number, ' ', '-')) NOT IN ('KA-19-AB-1234', 'KA-20-CD-5678', 'KA-21-GH-3456')")
+    await pgPool.query("DELETE FROM buses WHERE owner_email = 'rakesh@gmail.com' AND route_id = 'R2' AND UPPER(REPLACE(vehicle_number, ' ', '-')) NOT IN ('KA-19-AB-1234', 'KA-20-CD-5678', 'KA-21-GH-3456', 'KA-20-C-8812', 'KA-19-F-9900')")
   } catch (err) {
     console.warn('Could not seed Rakesh fleet:', err.message)
+  }
+}
+
+async function seedRoute1BusesPg() {
+  try {
+    const route1Buses = [
+      {
+        bus_name: 'Karkala Express',
+        vehicle_number: 'KA 20 AB 3042',
+        route_number: '101',
+        route_id: 'R1',
+        service_type: 'Express',
+        origin: 'Karkala',
+        destination: 'Mangaluru',
+        total_seats: 45,
+        photo_url: '/images/coastal-private-bus.jpg',
+        departure_time: '08:00 AM',
+        frequency: 'Daily',
+        journey_duration: '1 hour 30 minutes',
+        conductor: { name: 'Karthik Prabhu', phone: '98454 45678' },
+        stops: [
+          { stop_name: 'Karkala', planned_arrival: '08:00 AM' },
+          { stop_name: 'Amandar', planned_arrival: '08:15 AM' },
+          { stop_name: 'Moodbidri', planned_arrival: '08:30 AM' },
+          { stop_name: 'Yedpa', planned_arrival: '08:45 AM' },
+          { stop_name: 'Gangi', planned_arrival: '08:55 AM' },
+          { stop_name: 'Kaikamba', planned_arrival: '09:05 AM' },
+          { stop_name: 'Mangaluru', planned_arrival: '09:30 AM' },
+        ],
+      },
+      {
+        bus_name: 'Moodbidri Superfast',
+        vehicle_number: 'KA 19 M 7721',
+        route_number: '102',
+        route_id: 'R1',
+        service_type: 'Non AC',
+        origin: 'Mangaluru',
+        destination: 'Karkala',
+        total_seats: 45,
+        photo_url: '/images/coastal-private-bus.jpg',
+        departure_time: '09:00 AM',
+        frequency: 'Daily',
+        journey_duration: '1 hour 30 minutes',
+        conductor: { name: 'Satish Kulal', phone: '98455 56789' },
+        stops: [
+          { stop_name: 'Mangaluru', planned_arrival: '09:00 AM' },
+          { stop_name: 'Kaikamba', planned_arrival: '09:25 AM' },
+          { stop_name: 'Gangi', planned_arrival: '09:35 AM' },
+          { stop_name: 'Yedpa', planned_arrival: '09:45 AM' },
+          { stop_name: 'Moodbidri', planned_arrival: '10:00 AM' },
+          { stop_name: 'Amandar', planned_arrival: '10:15 AM' },
+          { stop_name: 'Karkala', planned_arrival: '10:30 AM' },
+        ],
+      },
+      {
+        bus_name: "Alva's Deluxe",
+        vehicle_number: 'KA 20 B 9914',
+        route_number: '103',
+        route_id: 'R1',
+        service_type: 'AC',
+        origin: 'Karkala',
+        destination: 'Mangaluru',
+        total_seats: 40,
+        photo_url: '/images/coastal-private-bus.jpg',
+        departure_time: '11:15 AM',
+        frequency: 'Daily',
+        journey_duration: '1 hour 30 minutes',
+        conductor: { name: 'Ganesh Acharya', phone: '98456 67890' },
+        stops: [
+          { stop_name: 'Karkala', planned_arrival: '11:15 AM' },
+          { stop_name: 'Amandar', planned_arrival: '11:30 AM' },
+          { stop_name: 'Moodbidri', planned_arrival: '11:45 AM' },
+          { stop_name: 'Yedpa', planned_arrival: '12:00 PM' },
+          { stop_name: 'Gangi', planned_arrival: '12:10 PM' },
+          { stop_name: 'Kaikamba', planned_arrival: '12:20 PM' },
+          { stop_name: 'Mangaluru', planned_arrival: '12:45 PM' },
+        ],
+      },
+      {
+        bus_name: 'Kudla Heritage',
+        vehicle_number: 'KA 19 E 5541',
+        route_number: '104',
+        route_id: 'R1',
+        service_type: 'Express',
+        origin: 'Mangaluru',
+        destination: 'Karkala',
+        total_seats: 45,
+        photo_url: '/images/coastal-private-bus.jpg',
+        departure_time: '01:30 PM',
+        frequency: 'Daily',
+        journey_duration: '1 hour 30 minutes',
+        conductor: { name: 'Naveen Kotian', phone: '98457 78901' },
+        stops: [
+          { stop_name: 'Mangaluru', planned_arrival: '01:30 PM' },
+          { stop_name: 'Kaikamba', planned_arrival: '01:55 PM' },
+          { stop_name: 'Gangi', planned_arrival: '02:05 PM' },
+          { stop_name: 'Yedpa', planned_arrival: '02:15 PM' },
+          { stop_name: 'Moodbidri', planned_arrival: '02:30 PM' },
+          { stop_name: 'Amandar', planned_arrival: '02:45 PM' },
+          { stop_name: 'Karkala', planned_arrival: '03:00 PM' },
+        ],
+      },
+    ]
+
+    for (const b of route1Buses) {
+      const cleanVeh = b.vehicle_number.toUpperCase().replace(/\s+/g, '-')
+      const exist = await pgPool.query(
+        "SELECT bus_id FROM buses WHERE UPPER(REPLACE(vehicle_number, ' ', '-')) = $1",
+        [cleanVeh]
+      )
+      let busId
+      if (exist.rows.length === 0) {
+        const ins = await pgPool.query(
+          `INSERT INTO buses (
+            bus_name, vehicle_number, route_number, service_type,
+            origin, destination, is_last_bus, conductor_pin,
+            owner_email, total_seats, photo_url, departure_time,
+            frequency, journey_duration, route_id
+          ) VALUES ($1, $2, $3, $4, $5, $6, 0, '4509', 'rakesh@gmail.com', $7, $8, $9, $10, $11, 'R1')
+          RETURNING bus_id`,
+          [
+            b.bus_name,
+            cleanVeh,
+            b.route_number,
+            b.service_type,
+            b.origin,
+            b.destination,
+            b.total_seats,
+            b.photo_url,
+            b.departure_time,
+            b.frequency,
+            b.journey_duration,
+          ]
+        )
+        busId = ins.rows[0].bus_id
+      } else {
+        busId = exist.rows[0].bus_id
+        await pgPool.query(
+          "UPDATE buses SET bus_name = $1, service_type = $2, departure_time = $3, origin = $4, destination = $5, route_id = 'R1', owner_email = 'rakesh@gmail.com' WHERE bus_id = $6",
+          [b.bus_name, b.service_type, b.departure_time, b.origin, b.destination, busId]
+        )
+      }
+
+      await pgPool.query('DELETE FROM bus_route_stops WHERE bus_id = $1', [busId])
+      for (let i = 0; i < b.stops.length; i++) {
+        await pgPool.query(
+          'INSERT INTO bus_route_stops (bus_id, stop_order, stop_name, planned_arrival) VALUES ($1, $2, $3, $4)',
+          [busId, i + 1, b.stops[i].stop_name, b.stops[i].planned_arrival]
+        )
+      }
+
+      // Detach any other conductor from this bus
+      await pgPool.query(
+        "UPDATE conductors SET assigned_bus_id = NULL WHERE assigned_bus_id = $1 AND name != $2",
+        [busId, b.conductor.name]
+      )
+
+      const cCheck = await pgPool.query(
+        "SELECT conductor_id FROM conductors WHERE owner_email = 'rakesh@gmail.com' AND name = $1",
+        [b.conductor.name]
+      )
+      if (cCheck.rows.length === 0) {
+        await pgPool.query(
+          "INSERT INTO conductors (owner_email, name, phone, assigned_bus_id, status) VALUES ('rakesh@gmail.com', $1, $2, $3, 'Active')",
+          [b.conductor.name, b.conductor.phone, busId]
+        )
+      } else {
+        await pgPool.query(
+          "UPDATE conductors SET assigned_bus_id = $1, phone = $2, status = 'Active' WHERE conductor_id = $3",
+          [busId, b.conductor.phone, cCheck.rows[0].conductor_id]
+        )
+      }
+    }
+  } catch (err) {
+    console.warn('Could not seed Route 1 buses in PostgreSQL:', err.message)
   }
 }
 // ============================================================================
@@ -515,6 +810,28 @@ function initSqliteSchema() {
       sqliteDb.run('ALTER TABLE buses ADD COLUMN departure_time TEXT', () => {})
       sqliteDb.run("ALTER TABLE buses ADD COLUMN frequency TEXT DEFAULT 'Daily'", () => {})
       sqliteDb.run('ALTER TABLE buses ADD COLUMN journey_duration TEXT', () => {})
+      sqliteDb.run("ALTER TABLE buses ADD COLUMN route_id TEXT DEFAULT 'R2'", () => {})
+
+      sqliteDb.run(`
+        CREATE TABLE IF NOT EXISTS routes (
+          route_id TEXT PRIMARY KEY,
+          route_name TEXT NOT NULL,
+          corridor_name TEXT NOT NULL,
+          highway TEXT NOT NULL,
+          total_distance_km REAL NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `)
+
+      sqliteDb.run(`
+        CREATE TABLE IF NOT EXISTS route_stops (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          route_id TEXT NOT NULL,
+          stop_order INTEGER NOT NULL,
+          stop_name TEXT NOT NULL,
+          planned_duration_min INTEGER DEFAULT 0
+        )
+      `)
 
       sqliteDb.run(`
         CREATE TABLE IF NOT EXISTS driver_shifts (
@@ -694,13 +1011,50 @@ function initSqliteSchema() {
         sqliteDb.run("INSERT OR IGNORE INTO owners (email, agency_name) VALUES ('vishal@gmail.com', 'Vishal Coastal Travels')")
         sqliteDb.run("INSERT OR IGNORE INTO owners (email, agency_name) VALUES ('rakesh@gmail.com', 'Rakesh Shetty Travels')")
 
-        seedRakeshFleetSqlite(() => {
+        seedSystemRoutesSqlite(() => {
           seedVerifiedBusStopsSqlite(() => {
-            isConnected = true
-            console.log(`✅ SQL Database connected: ${getDatabaseType()}`)
-            resolve(true)
+            seedRakeshFleetSqlite(() => {
+              seedRoute1BusesSqlite(() => {
+                isConnected = true
+                console.log(`✅ SQL Database connected: ${getDatabaseType()}`)
+                resolve(true)
+              })
+            })
           })
         })
+      })
+    })
+  })
+}
+
+function seedSystemRoutesSqlite(cb) {
+  sqliteDb.run(`
+    INSERT OR REPLACE INTO routes (route_id, route_name, corridor_name, highway, total_distance_km)
+    VALUES
+      ('R1', 'Karkala – Mangaluru', 'Karkala – Moodbidri – Mangaluru Corridor', 'NH-169', 62.9),
+      ('R2', 'Mangaluru – Kundapura', 'Coastal Highway Corridor', 'NH-66', 104.1)
+  `, () => {
+    sqliteDb.run("DELETE FROM route_stops WHERE route_id IN ('R1', 'R2')", () => {
+      const stmt = sqliteDb.prepare('INSERT INTO route_stops (route_id, stop_order, stop_name, planned_duration_min) VALUES (?, ?, ?, ?)')
+      stmt.run('R1', 1, 'Karkala', 0)
+      stmt.run('R1', 2, 'Amandar', 15)
+      stmt.run('R1', 3, 'Moodbidri', 30)
+      stmt.run('R1', 4, 'Yedpa', 45)
+      stmt.run('R1', 5, 'Gangi', 55)
+      stmt.run('R1', 6, 'Kaikamba', 65)
+      stmt.run('R1', 7, 'Mangaluru', 90)
+
+      stmt.run('R2', 1, 'Mangaluru', 0)
+      stmt.run('R2', 2, 'Kuntikana', 10)
+      stmt.run('R2', 3, 'Kulur', 20)
+      stmt.run('R2', 4, 'Surathkal', 45)
+      stmt.run('R2', 5, 'Mulki', 70)
+      stmt.run('R2', 6, 'Padubidri', 85)
+      stmt.run('R2', 7, 'Kaup', 100)
+      stmt.run('R2', 8, 'Udupi', 140)
+      stmt.run('R2', 9, 'Kundapura', 185)
+      stmt.finalize(() => {
+        if (cb) cb()
       })
     })
   })
@@ -712,6 +1066,7 @@ function seedRakeshFleetSqlite(cb) {
       bus_name: 'Shri Durga Travels',
       vehicle_number: 'KA-19-AB-1234',
       route_number: '001',
+      route_id: 'R2',
       service_type: 'Non AC',
       origin: 'Mangaluru',
       destination: 'Kundapura',
@@ -736,6 +1091,7 @@ function seedRakeshFleetSqlite(cb) {
       bus_name: 'Sri Lakshmi Travels',
       vehicle_number: 'KA-20-CD-5678',
       route_number: '002',
+      route_id: 'R2',
       service_type: 'AC',
       origin: 'Mangaluru',
       destination: 'Kundapura',
@@ -760,6 +1116,7 @@ function seedRakeshFleetSqlite(cb) {
       bus_name: 'Udupi Express',
       vehicle_number: 'KA-21-GH-3456',
       route_number: '004',
+      route_id: 'R2',
       service_type: 'Non AC',
       origin: 'Mangaluru',
       destination: 'Kundapura',
@@ -780,6 +1137,56 @@ function seedRakeshFleetSqlite(cb) {
         { stop_name: 'Kundapura', planned_arrival: '02:50 PM' },
       ],
     },
+    {
+      bus_name: 'Canara Pinto Deluxe',
+      vehicle_number: 'KA-20-C-8812',
+      route_number: '003',
+      route_id: 'R2',
+      service_type: 'Express',
+      origin: 'Kundapura',
+      destination: 'Mangaluru',
+      total_seats: 50,
+      departure_time: '07:30 AM',
+      frequency: 'Daily',
+      journey_duration: '3 hours 05 minutes',
+      conductor: { name: 'Dinesh Bhandary', phone: '98458 89012' },
+      stops: [
+        { stop_name: 'Kundapura', planned_arrival: '07:30 AM' },
+        { stop_name: 'Udupi', planned_arrival: '08:15 AM' },
+        { stop_name: 'Kaup', planned_arrival: '08:55 AM' },
+        { stop_name: 'Padubidri', planned_arrival: '09:10 AM' },
+        { stop_name: 'Mulki', planned_arrival: '09:25 AM' },
+        { stop_name: 'Surathkal', planned_arrival: '09:50 AM' },
+        { stop_name: 'Kulur', planned_arrival: '10:15 AM' },
+        { stop_name: 'Kuntikana', planned_arrival: '10:25 AM' },
+        { stop_name: 'Mangaluru', planned_arrival: '10:35 AM' },
+      ],
+    },
+    {
+      bus_name: 'Karavali Royal',
+      vehicle_number: 'KA-19-F-9900',
+      route_number: '005',
+      route_id: 'R2',
+      service_type: 'AC',
+      origin: 'Kundapura',
+      destination: 'Mangaluru',
+      total_seats: 40,
+      departure_time: '12:00 PM',
+      frequency: 'Daily',
+      journey_duration: '3 hours 05 minutes',
+      conductor: { name: 'Sudhir Devadiga', phone: '98459 90123' },
+      stops: [
+        { stop_name: 'Kundapura', planned_arrival: '12:00 PM' },
+        { stop_name: 'Udupi', planned_arrival: '12:45 PM' },
+        { stop_name: 'Kaup', planned_arrival: '01:25 PM' },
+        { stop_name: 'Padubidri', planned_arrival: '01:40 PM' },
+        { stop_name: 'Mulki', planned_arrival: '01:55 PM' },
+        { stop_name: 'Surathkal', planned_arrival: '02:20 PM' },
+        { stop_name: 'Kulur', planned_arrival: '02:45 PM' },
+        { stop_name: 'Kuntikana', planned_arrival: '02:55 PM' },
+        { stop_name: 'Mangaluru', planned_arrival: '03:05 PM' },
+      ],
+    },
   ]
 
   let remaining = rakeshBuses.length
@@ -790,7 +1197,7 @@ function seedRakeshFleetSqlite(cb) {
       (err, row) => {
         if (!row) {
           sqliteDb.run(
-            'INSERT INTO buses (bus_name, vehicle_number, route_number, service_type, origin, destination, is_last_bus, conductor_pin, owner_email, total_seats, photo_url, departure_time, frequency, journey_duration) VALUES (?, ?, ?, ?, ?, ?, 0, \'4509\', \'rakesh@gmail.com\', ?, \'/images/coastal-private-bus.jpg\', ?, ?, ?)',
+            'INSERT INTO buses (bus_name, vehicle_number, route_number, service_type, origin, destination, is_last_bus, conductor_pin, owner_email, total_seats, photo_url, departure_time, frequency, journey_duration, route_id) VALUES (?, ?, ?, ?, ?, ?, 0, \'4509\', \'rakesh@gmail.com\', ?, \'/images/coastal-private-bus.jpg\', ?, ?, ?, ?)',
             [
               b.bus_name,
               b.vehicle_number,
@@ -802,6 +1209,7 @@ function seedRakeshFleetSqlite(cb) {
               b.departure_time,
               b.frequency,
               b.journey_duration,
+              b.route_id || 'R2',
             ],
             function (insErr) {
               if (!insErr) {
@@ -826,8 +1234,178 @@ function seedRakeshFleetSqlite(cb) {
         } else {
           const busId = row.bus_id
           sqliteDb.run(
-            'UPDATE buses SET bus_name = ?, service_type = ?, departure_time = ?, origin = ?, destination = ?, owner_email = "rakesh@gmail.com" WHERE bus_id = ?',
-            [b.bus_name, b.service_type, b.departure_time, b.origin, b.destination, busId],
+            'UPDATE buses SET bus_name = ?, service_type = ?, departure_time = ?, origin = ?, destination = ?, route_id = ?, owner_email = "rakesh@gmail.com" WHERE bus_id = ?',
+            [b.bus_name, b.service_type, b.departure_time, b.origin, b.destination, b.route_id || 'R2', busId],
+            () => {
+              sqliteDb.run('DELETE FROM bus_route_stops WHERE bus_id = ?', [busId], () => {
+                const stopStmt = sqliteDb.prepare(
+                  'INSERT INTO bus_route_stops (bus_id, stop_order, stop_name, planned_arrival) VALUES (?, ?, ?, ?)'
+                )
+                b.stops.forEach((s, idx) => {
+                  stopStmt.run(busId, idx + 1, s.stop_name, s.planned_arrival)
+                })
+                stopStmt.finalize(() => {
+                  sqliteDb.run(
+                    "UPDATE conductors SET assigned_bus_id = ?, phone = ?, status = 'Active' WHERE owner_email = 'rakesh@gmail.com' AND name = ?",
+                    [busId, b.conductor.phone, b.conductor.name],
+                    () => {
+                      remaining--
+                      if (remaining <= 0 && cb) cb()
+                    }
+                  )
+                })
+              })
+            }
+          )
+        }
+      }
+    )
+  })
+}
+
+function seedRoute1BusesSqlite(cb) {
+  const route1Buses = [
+    {
+      bus_name: 'Karkala Express',
+      vehicle_number: 'KA-20-AB-3042',
+      route_number: '101',
+      route_id: 'R1',
+      service_type: 'Express',
+      origin: 'Karkala',
+      destination: 'Mangaluru',
+      total_seats: 45,
+      departure_time: '08:00 AM',
+      frequency: 'Daily',
+      journey_duration: '1 hour 30 minutes',
+      conductor: { name: 'Karthik Prabhu', phone: '98454 45678' },
+      stops: [
+        { stop_name: 'Karkala', planned_arrival: '08:00 AM' },
+        { stop_name: 'Amandar', planned_arrival: '08:15 AM' },
+        { stop_name: 'Moodbidri', planned_arrival: '08:30 AM' },
+        { stop_name: 'Yedpa', planned_arrival: '08:45 AM' },
+        { stop_name: 'Gangi', planned_arrival: '08:55 AM' },
+        { stop_name: 'Kaikamba', planned_arrival: '09:05 AM' },
+        { stop_name: 'Mangaluru', planned_arrival: '09:30 AM' },
+      ],
+    },
+    {
+      bus_name: 'Moodbidri Superfast',
+      vehicle_number: 'KA-19-M-7721',
+      route_number: '102',
+      route_id: 'R1',
+      service_type: 'Non AC',
+      origin: 'Mangaluru',
+      destination: 'Karkala',
+      total_seats: 45,
+      departure_time: '09:00 AM',
+      frequency: 'Daily',
+      journey_duration: '1 hour 30 minutes',
+      conductor: { name: 'Satish Kulal', phone: '98455 56789' },
+      stops: [
+        { stop_name: 'Mangaluru', planned_arrival: '09:00 AM' },
+        { stop_name: 'Kaikamba', planned_arrival: '09:25 AM' },
+        { stop_name: 'Gangi', planned_arrival: '09:35 AM' },
+        { stop_name: 'Yedpa', planned_arrival: '09:45 AM' },
+        { stop_name: 'Moodbidri', planned_arrival: '10:00 AM' },
+        { stop_name: 'Amandar', planned_arrival: '10:15 AM' },
+        { stop_name: 'Karkala', planned_arrival: '10:30 AM' },
+      ],
+    },
+    {
+      bus_name: "Alva's Deluxe",
+      vehicle_number: 'KA-20-B-9914',
+      route_number: '103',
+      route_id: 'R1',
+      service_type: 'AC',
+      origin: 'Karkala',
+      destination: 'Mangaluru',
+      total_seats: 40,
+      departure_time: '11:15 AM',
+      frequency: 'Daily',
+      journey_duration: '1 hour 30 minutes',
+      conductor: { name: 'Ganesh Acharya', phone: '98456 67890' },
+      stops: [
+        { stop_name: 'Karkala', planned_arrival: '11:15 AM' },
+        { stop_name: 'Amandar', planned_arrival: '11:30 AM' },
+        { stop_name: 'Moodbidri', planned_arrival: '11:45 AM' },
+        { stop_name: 'Yedpa', planned_arrival: '12:00 PM' },
+        { stop_name: 'Gangi', planned_arrival: '12:10 PM' },
+        { stop_name: 'Kaikamba', planned_arrival: '12:20 PM' },
+        { stop_name: 'Mangaluru', planned_arrival: '12:45 PM' },
+      ],
+    },
+    {
+      bus_name: 'Kudla Heritage',
+      vehicle_number: 'KA-19-E-5541',
+      route_number: '104',
+      route_id: 'R1',
+      service_type: 'Express',
+      origin: 'Mangaluru',
+      destination: 'Karkala',
+      total_seats: 45,
+      departure_time: '01:30 PM',
+      frequency: 'Daily',
+      journey_duration: '1 hour 30 minutes',
+      conductor: { name: 'Naveen Kotian', phone: '98457 78901' },
+      stops: [
+        { stop_name: 'Mangaluru', planned_arrival: '01:30 PM' },
+        { stop_name: 'Kaikamba', planned_arrival: '01:55 PM' },
+        { stop_name: 'Gangi', planned_arrival: '02:05 PM' },
+        { stop_name: 'Yedpa', planned_arrival: '02:15 PM' },
+        { stop_name: 'Moodbidri', planned_arrival: '02:30 PM' },
+        { stop_name: 'Amandar', planned_arrival: '02:45 PM' },
+        { stop_name: 'Karkala', planned_arrival: '03:00 PM' },
+      ],
+    },
+  ]
+
+  let remaining = route1Buses.length
+  route1Buses.forEach((b) => {
+    sqliteDb.get(
+      'SELECT bus_id FROM buses WHERE UPPER(REPLACE(vehicle_number, " ", "-")) = ?',
+      [b.vehicle_number],
+      (err, row) => {
+        if (!row) {
+          sqliteDb.run(
+            'INSERT INTO buses (bus_name, vehicle_number, route_number, service_type, origin, destination, is_last_bus, conductor_pin, owner_email, total_seats, photo_url, departure_time, frequency, journey_duration, route_id) VALUES (?, ?, ?, ?, ?, ?, 0, \'4509\', \'rakesh@gmail.com\', ?, \'/images/coastal-private-bus.jpg\', ?, ?, ?, ?)',
+            [
+              b.bus_name,
+              b.vehicle_number,
+              b.route_number,
+              b.service_type,
+              b.origin,
+              b.destination,
+              b.total_seats,
+              b.departure_time,
+              b.frequency,
+              b.journey_duration,
+              b.route_id || 'R1',
+            ],
+            function (insErr) {
+              if (!insErr) {
+                const busId = this.lastID
+                const stopStmt = sqliteDb.prepare(
+                  'INSERT INTO bus_route_stops (bus_id, stop_order, stop_name, planned_arrival) VALUES (?, ?, ?, ?)'
+                )
+                b.stops.forEach((s, idx) => {
+                  stopStmt.run(busId, idx + 1, s.stop_name, s.planned_arrival)
+                })
+                stopStmt.finalize()
+
+                sqliteDb.run(
+                  "INSERT OR REPLACE INTO conductors (owner_email, name, phone, assigned_bus_id, status) VALUES ('rakesh@gmail.com', ?, ?, ?, 'Active')",
+                  [b.conductor.name, b.conductor.phone, busId]
+                )
+              }
+              remaining--
+              if (remaining <= 0 && cb) cb()
+            }
+          )
+        } else {
+          const busId = row.bus_id
+          sqliteDb.run(
+            'UPDATE buses SET bus_name = ?, service_type = ?, departure_time = ?, origin = ?, destination = ?, route_id = ?, owner_email = "rakesh@gmail.com" WHERE bus_id = ?',
+            [b.bus_name, b.service_type, b.departure_time, b.origin, b.destination, b.route_id || 'R1', busId],
             () => {
               sqliteDb.run('DELETE FROM bus_route_stops WHERE bus_id = ?', [busId], () => {
                 const stopStmt = sqliteDb.prepare(
@@ -1215,6 +1793,7 @@ export async function verifyConductorPin(vehicleNumber, pin, driverPhone = null)
 export async function saveBus(bus) {
   const cleanVeh = bus.vehicle_number.toUpperCase()
   const stops = Array.isArray(bus.stops) ? bus.stops : []
+  const routeId = bus.route_id || (bus.origin === 'Karkala' || bus.destination === 'Karkala' || bus.origin === 'Moodbidri' ? 'R1' : 'R2')
 
   if (isPostgres()) {
     const client = await pgPool.connect()
@@ -1225,8 +1804,8 @@ export async function saveBus(bus) {
           bus_name, vehicle_number, route_number, service_type,
           origin, destination, is_last_bus, conductor_pin,
           owner_email, total_seats, photo_url, departure_time,
-          frequency, journey_duration
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+          frequency, journey_duration, route_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         RETURNING bus_id`,
         [
           bus.bus_name,
@@ -1243,6 +1822,7 @@ export async function saveBus(bus) {
           bus.departure_time || '06:30 AM',
           bus.frequency || 'Daily',
           bus.journey_duration || '3 hours 30 minutes',
+          routeId,
         ]
       )
 
@@ -1255,7 +1835,7 @@ export async function saveBus(bus) {
       }
 
       await client.query('COMMIT')
-      return { bus_id: newBusId, ...bus, stops }
+      return { bus_id: newBusId, ...bus, route_id: routeId, stops }
     } catch (err) {
       await client.query('ROLLBACK')
       console.error('Error inserting bus to PostgreSQL:', err.message)
@@ -1274,8 +1854,8 @@ export async function saveBus(bus) {
           bus_name, vehicle_number, route_number, service_type,
           origin, destination, is_last_bus, conductor_pin,
           owner_email, total_seats, photo_url, departure_time,
-          frequency, journey_duration
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          frequency, journey_duration, route_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           bus.bus_name,
           cleanVeh,
@@ -1291,6 +1871,7 @@ export async function saveBus(bus) {
           bus.departure_time || '06:30 AM',
           bus.frequency || 'Daily',
           bus.journey_duration || '3 hours 30 minutes',
+          routeId,
         ],
         function (err) {
           if (err) {
@@ -1303,7 +1884,7 @@ export async function saveBus(bus) {
           const newBusId = this.lastID
           if (stops.length === 0) {
             sqliteDb.run('COMMIT')
-            resolve({ bus_id: newBusId, ...bus, stops: [] })
+            resolve({ bus_id: newBusId, ...bus, route_id: routeId, stops: [] })
             return
           }
 
@@ -1319,7 +1900,7 @@ export async function saveBus(bus) {
               resolve(null)
             } else {
               sqliteDb.run('COMMIT')
-              resolve({ bus_id: newBusId, ...bus, stops })
+              resolve({ bus_id: newBusId, ...bus, route_id: routeId, stops })
             }
           })
         }
@@ -1332,6 +1913,7 @@ export async function saveBus(bus) {
 export async function updateBus(busId, bus) {
   const cleanVeh = bus.vehicle_number.toUpperCase()
   const stops = Array.isArray(bus.stops) ? bus.stops : []
+  const routeId = bus.route_id || (bus.origin === 'Karkala' || bus.destination === 'Karkala' || bus.origin === 'Moodbidri' ? 'R1' : 'R2')
 
   if (isPostgres()) {
     const client = await pgPool.connect()
@@ -1349,8 +1931,9 @@ export async function updateBus(busId, bus) {
           photo_url = $8,
           departure_time = $9,
           frequency = $10,
-          journey_duration = $11
-        WHERE bus_id = $12 AND LOWER(owner_email) = LOWER($13)`,
+          journey_duration = $11,
+          route_id = $12
+        WHERE bus_id = $13 AND LOWER(owner_email) = LOWER($14)`,
         [
           bus.bus_name,
           cleanVeh,
@@ -1363,6 +1946,7 @@ export async function updateBus(busId, bus) {
           bus.departure_time || '06:30 AM',
           bus.frequency || 'Daily',
           bus.journey_duration || '3 hours 30 minutes',
+          routeId,
           busId,
           bus.owner_email,
         ]
@@ -1377,7 +1961,7 @@ export async function updateBus(busId, bus) {
       }
 
       await client.query('COMMIT')
-      return { bus_id: busId, ...bus, stops }
+      return { bus_id: busId, ...bus, route_id: routeId, stops }
     } catch (err) {
       await client.query('ROLLBACK')
       console.error('Error updating bus in PostgreSQL:', err.message)
@@ -1402,7 +1986,8 @@ export async function updateBus(busId, bus) {
           photo_url = ?,
           departure_time = ?,
           frequency = ?,
-          journey_duration = ?
+          journey_duration = ?,
+          route_id = ?
         WHERE bus_id = ? AND LOWER(owner_email) = LOWER(?)`,
         [
           bus.bus_name,
@@ -1416,6 +2001,7 @@ export async function updateBus(busId, bus) {
           bus.departure_time || '06:30 AM',
           bus.frequency || 'Daily',
           bus.journey_duration || '3 hours 30 minutes',
+          routeId,
           busId,
           bus.owner_email,
         ],
@@ -1431,7 +2017,7 @@ export async function updateBus(busId, bus) {
             }
             if (stops.length === 0) {
               sqliteDb.run('COMMIT')
-              return resolve({ bus_id: busId, ...bus, stops: [] })
+              return resolve({ bus_id: busId, ...bus, route_id: routeId, stops: [] })
             }
             const stmt = sqliteDb.prepare(
               'INSERT INTO bus_route_stops (bus_id, stop_order, stop_name, planned_arrival) VALUES (?, ?, ?, ?)'
@@ -1445,12 +2031,42 @@ export async function updateBus(busId, bus) {
                 resolve(null)
               } else {
                 sqliteDb.run('COMMIT')
-                resolve({ bus_id: busId, ...bus, stops })
+                resolve({ bus_id: busId, ...bus, route_id: routeId, stops })
               }
             })
           })
         }
       )
+    })
+  })
+}
+
+export async function getRoutes() {
+  if (isPostgres()) {
+    const res = await pgPool.query('SELECT * FROM routes ORDER BY route_id ASC')
+    return res.rows
+  }
+  return new Promise((resolve) => {
+    sqliteDb.all('SELECT * FROM routes ORDER BY route_id ASC', (err, rows) => {
+      resolve(err ? [] : rows || [])
+    })
+  })
+}
+
+export async function getRouteById(routeId) {
+  if (isPostgres()) {
+    const res = await pgPool.query('SELECT * FROM routes WHERE route_id = $1', [routeId])
+    if (!res.rows || res.rows.length === 0) return null
+    const route = res.rows[0]
+    const stopsRes = await pgPool.query('SELECT * FROM route_stops WHERE route_id = $1 ORDER BY stop_order ASC', [routeId])
+    return { ...route, stops: stopsRes.rows || [] }
+  }
+  return new Promise((resolve) => {
+    sqliteDb.get('SELECT * FROM routes WHERE route_id = ?', [routeId], (err, row) => {
+      if (err || !row) return resolve(null)
+      sqliteDb.all('SELECT * FROM route_stops WHERE route_id = ? ORDER BY stop_order ASC', [routeId], (sErr, sRows) => {
+        resolve({ ...row, stops: sRows || [] })
+      })
     })
   })
 }
@@ -1913,12 +2529,11 @@ export const OFFICIAL_9_CORRIDOR_STOPS = [
   },
 ]
 
-export const VERIFIED_COASTAL_STOPS = OFFICIAL_9_CORRIDOR_STOPS
+export const VERIFIED_COASTAL_STOPS = ALL_UNIQUE_STOPS
 
 async function seedVerifiedBusStopsPg() {
   try {
-    await pgPool.query('DELETE FROM bus_stops')
-    for (const stop of OFFICIAL_9_CORRIDOR_STOPS) {
+    for (const stop of ALL_UNIQUE_STOPS) {
       await pgPool.query(
         'INSERT INTO bus_stops (stop_id, stop_name, stop_name_kn, alternative_names, nearby_landmarks, locality, latitude, longitude) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (stop_name) DO UPDATE SET stop_id = EXCLUDED.stop_id, stop_name_kn = EXCLUDED.stop_name_kn, alternative_names = EXCLUDED.alternative_names, nearby_landmarks = EXCLUDED.nearby_landmarks, locality = EXCLUDED.locality, latitude = EXCLUDED.latitude, longitude = EXCLUDED.longitude',
         [
@@ -1939,25 +2554,23 @@ async function seedVerifiedBusStopsPg() {
 }
 
 function seedVerifiedBusStopsSqlite(cb) {
-  sqliteDb.run('DELETE FROM bus_stops', () => {
-    const stmt = sqliteDb.prepare(
-      'INSERT OR REPLACE INTO bus_stops (stop_id, stop_name, stop_name_kn, alternative_names, nearby_landmarks, locality, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  const stmt = sqliteDb.prepare(
+    'INSERT OR REPLACE INTO bus_stops (stop_id, stop_name, stop_name_kn, alternative_names, nearby_landmarks, locality, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  )
+  for (const stop of ALL_UNIQUE_STOPS) {
+    stmt.run(
+      stop.stop_id,
+      stop.stop_name,
+      stop.stop_name_kn,
+      stop.alternative_names,
+      stop.nearby_landmarks,
+      stop.locality,
+      stop.latitude,
+      stop.longitude
     )
-    for (const stop of OFFICIAL_9_CORRIDOR_STOPS) {
-      stmt.run(
-        stop.stop_id,
-        stop.stop_name,
-        stop.stop_name_kn,
-        stop.alternative_names,
-        stop.nearby_landmarks,
-        stop.locality,
-        stop.latitude,
-        stop.longitude
-      )
-    }
-    stmt.finalize(() => {
-      if (cb) cb()
-    })
+  }
+  stmt.finalize(() => {
+    if (cb) cb()
   })
 }
 function calculateHaversineKm(lat1, lon1, lat2, lon2) {
@@ -2069,25 +2682,13 @@ export async function searchBusesByJourney(fromQuery, toQuery, activeBuses = {},
     return []
   }
 
-  // 1. Enforce that search is strictly within the 9 official corridor stops
-  const fromStop = OFFICIAL_9_CORRIDOR_STOPS.find((s) => {
-    const norm = normalizeStopSearchTerm(s.stop_name)
-    return norm === cleanFrom || s.stop_name.toLowerCase() === fromQuery.toLowerCase().trim()
-  })
-  const toStop = OFFICIAL_9_CORRIDOR_STOPS.find((s) => {
-    const norm = normalizeStopSearchTerm(s.stop_name)
-    return norm === cleanTo || s.stop_name.toLowerCase() === toQuery.toLowerCase().trim()
-  })
-
-  // Both stops must belong to the 9 official corridor stops
-  if (!fromStop || !toStop) {
+  // Determine route and validate that both stops belong to the same corridor
+  const routeInfo = determineRouteForJourney(fromQuery, toQuery)
+  if (!routeInfo) {
     return []
   }
 
-  // Reject reverse journey or identical stop (Boarding must precede Destination)
-  if (fromStop.stop_id >= toStop.stop_id) {
-    return []
-  }
+  const { route_id: targetRouteId, is_reverse, from_stop: fromStop, to_stop: toStop, ordered_stops: corridorStops } = routeInfo
 
   const buses = await getBuses()
   const matched = []
@@ -2106,8 +2707,9 @@ export async function searchBusesByJourney(fromQuery, toQuery, activeBuses = {},
   }
 
   for (const bus of buses) {
-    // Strict Project Requirement: Must belong to the fixed corridor Mangaluru -> Kundapura
-    if (bus.origin !== 'Mangaluru' || bus.destination !== 'Kundapura') {
+    const busRouteId = bus.route_id || (bus.origin === 'Karkala' || bus.destination === 'Karkala' || bus.origin === 'Moodbidri' ? 'R1' : 'R2')
+    // Route Isolation: Do not show buses from unrelated routes
+    if (busRouteId !== targetRouteId) {
       continue
     }
 
@@ -2148,7 +2750,7 @@ export async function searchBusesByJourney(fromQuery, toQuery, activeBuses = {},
       return name === cleanTo || name.includes(cleanTo) || cleanTo.includes(name)
     })
 
-    // Journey Requirement: FROM occurs BEFORE TO along the same route
+    // Journey Requirement: FROM occurs BEFORE TO along the bus route sequence
     if (fromIdx !== -1 && toIdx !== -1 && fromIdx < toIdx) {
       const boardingStop = stops[fromIdx]
       const destinationStop = stops[toIdx]
@@ -2207,10 +2809,6 @@ export async function searchBusesByJourney(fromQuery, toQuery, activeBuses = {},
         expectedArrivalMinutes = (currentMinutesIST + liveEtaMinutes) % 1440
         expectedArrivalTime = formatMinutesToTime(expectedArrivalMinutes)
 
-        // When desired time is specified:
-        // 1. Buses already present at the selected stop -> ALWAYS SHOW
-        // 2. Buses approaching the stop -> ALWAYS SHOW
-        // 3. Buses behind the stop and travelling towards it, expected to arrive after the selected time
         if (desiredMinutes !== null) {
           if (searchCategory === 'EN_ROUTE' && expectedArrivalMinutes < desiredMinutes) {
             continue
@@ -2236,11 +2834,15 @@ export async function searchBusesByJourney(fromQuery, toQuery, activeBuses = {},
         ? calculateScheduleAdherence(expectedArrivalMinutes, plannedMinutes)
         : { status: 'SCHEDULED', delay_minutes: 0, label: 'Scheduled' }
 
+      // Present stops in travel direction
+      const travelStops = is_reverse ? [...stops].reverse() : stops
+
       matched.push({
         bus_id: bus.bus_id,
         bus_name: bus.bus_name,
         vehicle_number: bus.vehicle_number,
         route_number: bus.route_number,
+        route_id: targetRouteId,
         service_type: bus.service_type || 'Non AC',
         origin: bus.origin,
         destination: bus.destination,
@@ -2272,7 +2874,7 @@ export async function searchBusesByJourney(fromQuery, toQuery, activeBuses = {},
         next_stop: activeData.next_stop || null,
         conductor_name: conductor.name,
         conductor_phone: conductor.phone,
-        stops,
+        stops: travelStops,
       })
     }
   }

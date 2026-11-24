@@ -91,6 +91,192 @@ export const OFFICIAL_9_CORRIDOR_STOPS = [
   },
 ]
 
+export const ROUTE_2_MANGALURU_KUNDAPURA_STOPS = OFFICIAL_9_CORRIDOR_STOPS
+export const ROUTE_2_STOPS = OFFICIAL_9_CORRIDOR_STOPS
+
+export const ROUTE_1_KARKALA_MANGALURU_STOPS = [
+  {
+    stop_id: 101,
+    stop_name: 'Karkala',
+    stop_name_kn: 'ಕಾರ್ಕಳ',
+    alternative_names: 'Karkal, Karkala Bus Stand, Gandhi Maidan, Ananthashayana, Anekere',
+    nearby_landmarks: 'Karkala Bus Stand, Gommateshwara Statue, Anekere Lake, Venkataramana Temple',
+    locality: 'Karkala, Udupi District',
+    latitude: 13.2188,
+    longitude: 74.9776,
+  },
+  {
+    stop_id: 102,
+    stop_name: 'Amandar',
+    stop_name_kn: 'ಅಮಂದಾರ್',
+    alternative_names: 'Alangar, Amandar Cross, Alangar Church',
+    nearby_landmarks: 'St. Thomas Church Alangar, Amandar Junction, NH-169 Highway',
+    locality: 'Amandar / Alangar',
+    latitude: 13.142,
+    longitude: 74.986,
+  },
+  {
+    stop_id: 103,
+    stop_name: 'Moodbidri',
+    stop_name_kn: 'ಮೂಡುಬಿದಿರೆ',
+    alternative_names: "Moodabidri, Mudbidri, Jain Kashi, Alva's Campus, Vidyagiri",
+    nearby_landmarks: "Moodbidri Bus Stand, Thousand Pillar Basadi, Alva's Education Foundation, Nishitha Complex",
+    locality: 'Moodbidri, Dakshina Kannada',
+    latitude: 13.0665,
+    longitude: 74.9953,
+  },
+  {
+    stop_id: 104,
+    stop_name: 'Yedpa',
+    stop_name_kn: 'ಯೆಡ್ಪ',
+    alternative_names: 'Yedapadavu, Yedapadav, Yedpa Junction',
+    nearby_landmarks: 'Yedapadavu Bus Stop, Shree Mahaganapathi Temple, NH-169 Ghat Section',
+    locality: 'Yedapadavu, Mangaluru Taluk',
+    latitude: 13.0035,
+    longitude: 74.968,
+  },
+  {
+    stop_id: 105,
+    stop_name: 'Gangi',
+    stop_name_kn: 'ಗಂಜಿ',
+    alternative_names: 'Ganjimutt, Ganjimath, Gangi Cross',
+    nearby_landmarks: 'Ganjimutt Junction, Plastic Park, KIADB Industrial Area Ganjimath',
+    locality: 'Ganjimutt, Mangaluru Taluk',
+    latitude: 12.968,
+    longitude: 74.9497,
+  },
+  {
+    stop_id: 106,
+    stop_name: 'Kaikamba',
+    stop_name_kn: 'ಕೈಕಂಬ',
+    alternative_names: 'Gurupura Kaikamba, Kaikamba Junction, Polali Cross',
+    nearby_landmarks: 'Kaikamba Circle, Polali Temple Cross Road, Gurupura River Bridge',
+    locality: 'Gurupura Kaikamba, Mangaluru',
+    latitude: 12.9607,
+    longitude: 74.9332,
+  },
+  {
+    stop_id: 1,
+    stop_name: 'Mangaluru',
+    stop_name_kn: 'ಮಂಗಳೂರು',
+    alternative_names: 'Mangalore, Statebank, Hampankatta, Central',
+    nearby_landmarks: 'DC Office, Town Hall, Nehru Maidan, Central Railway Station',
+    locality: 'Statebank, Mangaluru',
+    latitude: 12.8633,
+    longitude: 74.8385,
+  },
+]
+export const ROUTE_1_STOPS = ROUTE_1_KARKALA_MANGALURU_STOPS
+
+export const ALL_UNIQUE_STOPS = [
+  ...ROUTE_1_STOPS.filter((s) => s.stop_name !== 'Mangaluru'),
+  ...ROUTE_2_STOPS,
+]
+
+export const SYSTEM_ROUTES = [
+  {
+    route_id: 'R1',
+    route_number: '169',
+    route_name: 'Karkala ➔ Mangaluru',
+    origin: 'Karkala',
+    destination: 'Mangaluru',
+    highway: 'NH-169',
+    distance_km: 62.89,
+    stops: ROUTE_1_KARKALA_MANGALURU_STOPS,
+  },
+  {
+    route_id: 'R2',
+    route_number: '066',
+    route_name: 'Mangaluru ➔ Kundapura',
+    origin: 'Mangaluru',
+    destination: 'Kundapura',
+    highway: 'NH-66',
+    distance_km: 104.15,
+    stops: ROUTE_2_MANGALURU_KUNDAPURA_STOPS,
+  },
+]
+SYSTEM_ROUTES.R1 = SYSTEM_ROUTES[0]
+SYSTEM_ROUTES.R2 = SYSTEM_ROUTES[1]
+
+/**
+ * Determines whether a passenger search (from, to) matches Route 1, Route 2, or neither.
+ * Automatically accounts for travel direction and reversed order.
+ */
+export function determineRouteForJourney(fromQuery, toQuery) {
+  if (!fromQuery || !toQuery) return null
+  const cleanFrom = String(fromQuery).trim().toLowerCase()
+  const cleanTo = String(toQuery).trim().toLowerCase()
+  if (cleanFrom === cleanTo) return null
+
+  const matchStop = (list, query) =>
+    list.find((s) => {
+      const q = query.toLowerCase()
+      const name = s.stop_name.toLowerCase()
+      const alt = (s.alternative_names || '').toLowerCase()
+      return name === q || alt.includes(q) || q.includes(name)
+    })
+
+  // Check Route 1 (Karkala - Mangaluru)
+  const r1From = matchStop(ROUTE_1_STOPS, cleanFrom)
+  const r1To = matchStop(ROUTE_1_STOPS, cleanTo)
+
+  // Check Route 2 (Mangaluru - Kundapura)
+  const r2From = matchStop(ROUTE_2_STOPS, cleanFrom)
+  const r2To = matchStop(ROUTE_2_STOPS, cleanTo)
+
+  // If both exist on Route 1
+  if (r1From && r1To) {
+    const fromIdx = ROUTE_1_STOPS.findIndex((s) => s.stop_name === r1From.stop_name)
+    const toIdx = ROUTE_1_STOPS.findIndex((s) => s.stop_name === r1To.stop_name)
+    const isForward = fromIdx < toIdx // Karkala -> Mangaluru
+    const stopsInDirection = isForward ? [...ROUTE_1_STOPS] : [...ROUTE_1_STOPS].reverse()
+
+    return {
+      route_id: 'R1',
+      route_number: '169',
+      route_name: isForward ? 'Karkala ➔ Mangaluru' : 'Mangaluru ➔ Karkala',
+      origin: isForward ? 'Karkala' : 'Mangaluru',
+      destination: isForward ? 'Mangaluru' : 'Karkala',
+      highway: 'NH-169',
+      isForward,
+      is_reverse: !isForward,
+      stops: stopsInDirection,
+      stopsInDirection,
+      fromStop: r1From,
+      toStop: r1To,
+      fromIdx: stopsInDirection.findIndex((s) => s.stop_name === r1From.stop_name),
+      toIdx: stopsInDirection.findIndex((s) => s.stop_name === r1To.stop_name),
+    }
+  }
+
+  // If both exist on Route 2
+  if (r2From && r2To) {
+    const fromIdx = ROUTE_2_STOPS.findIndex((s) => s.stop_name === r2From.stop_name)
+    const toIdx = ROUTE_2_STOPS.findIndex((s) => s.stop_name === r2To.stop_name)
+    const isForward = fromIdx < toIdx // Mangaluru -> Kundapura
+    const stopsInDirection = isForward ? [...ROUTE_2_STOPS] : [...ROUTE_2_STOPS].reverse()
+
+    return {
+      route_id: 'R2',
+      route_number: '066',
+      route_name: isForward ? 'Mangaluru ➔ Kundapura' : 'Kundapura ➔ Mangaluru',
+      origin: isForward ? 'Mangaluru' : 'Kundapura',
+      destination: isForward ? 'Kundapura' : 'Mangaluru',
+      highway: 'NH-66',
+      isForward,
+      is_reverse: !isForward,
+      stops: stopsInDirection,
+      stopsInDirection,
+      fromStop: r2From,
+      toStop: r2To,
+      fromIdx: stopsInDirection.findIndex((s) => s.stop_name === r2From.stop_name),
+      toIdx: stopsInDirection.findIndex((s) => s.stop_name === r2To.stop_name),
+    }
+  }
+
+  return null
+}
+
 export function matchesDestination(bus, destination) {
   if (!destination || destination === 'All') return true
 

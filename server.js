@@ -26,6 +26,8 @@ import {
   getOwnerDashboardData,
   getPassengerFeedback,
   getRecentTelemetry,
+  getRoutes,
+  getRouteById,
   initDB,
   insertOwnerActivity,
   isDbConnected,
@@ -396,11 +398,13 @@ app.post('/api/owner/buses', requireOwnerSession, async (req, res) => {
   }
 
   const pin = conductor_pin ? String(conductor_pin).trim() : Math.floor(1000 + Math.random() * 9000).toString()
+  const routeId = req.body.route_id || (origin === 'Karkala' || destination === 'Karkala' || origin === 'Moodbidri' ? 'R1' : 'R2')
 
   const busPayload = {
     bus_name: bus_name.trim(),
     vehicle_number: cleanVeh,
     route_number: route_number ? String(route_number).trim() : '001',
+    route_id: routeId,
     service_type: service_type || 'Express',
     origin: origin ? String(origin).trim() : 'Mangaluru',
     destination: destination ? String(destination).trim() : 'Udupi',
@@ -511,6 +515,7 @@ app.put('/api/owner/buses/:busId', requireOwnerSession, async (req, res) => {
     bus_name: bus_name.trim(),
     vehicle_number: cleanVeh,
     route_number: route_number ? String(route_number).trim() : '001',
+    route_id: req.body.route_id || existingOwned.route_id || (origin === 'Karkala' || destination === 'Karkala' || origin === 'Moodbidri' ? 'R1' : 'R2'),
     service_type: service_type || existingOwned.service_type || 'Express',
     origin: origin ? String(origin).trim() : 'Mangaluru',
     destination: destination ? String(destination).trim() : 'Udupi',
@@ -1251,6 +1256,30 @@ app.get(['/api/public/stops', '/api/public/stops/all'], async (req, res) => {
   } catch (err) {
     console.error('Error in /api/public/stops:', err)
     res.status(500).json({ success: false, error: 'Failed to fetch stops.' })
+  }
+})
+
+// 3b. Get supported system routes (Route 1: Karkala–Mangaluru, Route 2: Mangaluru–Kundapura)
+app.get('/api/public/routes', async (req, res) => {
+  try {
+    const routes = await getRoutes()
+    res.json({ success: true, count: routes.length, routes })
+  } catch (err) {
+    console.error('Error in /api/public/routes:', err)
+    res.status(500).json({ success: false, error: 'Failed to fetch routes.' })
+  }
+})
+
+app.get('/api/public/routes/:routeId', async (req, res) => {
+  try {
+    const route = await getRouteById(req.params.routeId)
+    if (!route) {
+      return res.status(404).json({ success: false, error: 'Route not found.' })
+    }
+    res.json({ success: true, route })
+  } catch (err) {
+    console.error('Error in /api/public/routes/:routeId:', err)
+    res.status(500).json({ success: false, error: 'Failed to fetch route.' })
   }
 })
 

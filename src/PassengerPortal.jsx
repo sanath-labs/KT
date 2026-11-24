@@ -11,15 +11,21 @@ import io from 'socket.io-client'
 import { MapContainer, TileLayer, Polyline, Marker, Popup } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import { apiUrl, socketUrl } from './api.js'
-import { OFFICIAL_9_CORRIDOR_STOPS } from './transitUtils.js'
+import {
+  OFFICIAL_9_CORRIDOR_STOPS,
+  ALL_UNIQUE_STOPS,
+  SYSTEM_ROUTES,
+  determineRouteForJourney,
+} from './transitUtils.js'
 import { NH66_HIGHWAY_POLYLINE } from './nh66RouteGeometry.js'
+import { NH169_HIGHWAY_POLYLINE } from './nh169RouteGeometry.js'
 import JourneySearchCard from './components/JourneySearchCard.jsx'
 import BusCard from './components/BusCard.jsx'
 import RouteTimeline from './components/RouteTimeline.jsx'
 import LiveTrackingHud from './components/LiveTrackingHud.jsx'
 import { createRotatingBusIcon, stopPinIcon } from './mapIcons.js'
 import { GoogleMapsController } from './components/GoogleMapsController.jsx'
-import { matchGpsToNH66Road, calculateRoadProgressAndNextStop } from './roadMatchingService.js'
+import { matchGpsToRoad, matchGpsToNH66Road, calculateRoadProgressAndNextStop } from './roadMatchingService.js'
 import { subscribeToRealtimeBusTracking } from './supabaseClient.js'
 import { MapViewportController } from './components/MapMarkers.jsx'
 import { getSynchronizedServerTimeMs, useSynchronizedClock } from './istClockService.js'
@@ -162,49 +168,43 @@ export default function PassengerPortal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Filter Dropdown Suggestions from 9 Official Corridor Stops
+  // Filter Dropdown Suggestions from All Verified Stops across Route 1 and Route 2
   const fromSuggestions = useMemo(() => {
     const q = fromQuery.trim().toLowerCase()
-    return OFFICIAL_9_CORRIDOR_STOPS.filter(
+    return ALL_UNIQUE_STOPS.filter(
       (s) =>
-        s.stop_id < 9 && // Kundapura is northern terminus
         s.stop_name !== destination &&
         (!q ||
           s.stop_name.toLowerCase().includes(q) ||
           s.stop_name_kn.includes(q) ||
-          s.alternative_names.toLowerCase().includes(q))
+          (s.alternative_names && s.alternative_names.toLowerCase().includes(q)))
     )
   }, [fromQuery, destination])
 
   const toSuggestions = useMemo(() => {
     const q = toQuery.trim().toLowerCase()
-    const fromStopObj = OFFICIAL_9_CORRIDOR_STOPS.find(
-      (s) => s.stop_name.toLowerCase() === currentStop.toLowerCase()
-    )
-    const minOrder = fromStopObj ? fromStopObj.stop_id : 0
-
-    return OFFICIAL_9_CORRIDOR_STOPS.filter(
+    return ALL_UNIQUE_STOPS.filter(
       (s) =>
-        s.stop_id > minOrder &&
+        s.stop_name !== currentStop &&
+        determineRouteForJourney(currentStop, s.stop_name) !== null &&
         (!q ||
           s.stop_name.toLowerCase().includes(q) ||
           s.stop_name_kn.includes(q) ||
-          s.alternative_names.toLowerCase().includes(q))
+          (s.alternative_names && s.alternative_names.toLowerCase().includes(q)))
     )
   }, [toQuery, currentStop])
 
   // Select From stop with automatic destination adjustment if needed
   const handleSelectFromStop = (stopName) => {
     setCurrentStop(stopName)
-    const newFromObj = OFFICIAL_9_CORRIDOR_STOPS.find((s) => s.stop_name === stopName)
-    const currentToObj = OFFICIAL_9_CORRIDOR_STOPS.find((s) => s.stop_name === destination)
-
-    if (newFromObj && currentToObj && currentToObj.stop_id <= newFromObj.stop_id) {
-      const nextStop = OFFICIAL_9_CORRIDOR_STOPS.find((s) => s.stop_id > newFromObj.stop_id)
-      if (nextStop) {
-        setDestination(nextStop.stop_name)
-      } else {
+    // If current destination does not form a valid route with the new From stop, pick a smart default
+    if (destination === stopName || !determineRouteForJourney(stopName, destination)) {
+      if (['Karkala', 'Moodbidri', 'Amandar', 'Yedpa', 'Gangi', 'Kaikamba'].includes(stopName)) {
+        setDestination('Mangaluru')
+      } else if (stopName === 'Mangaluru') {
         setDestination('Kundapura')
+      } else {
+        setDestination('Mangaluru')
       }
     }
   }
@@ -263,27 +263,11 @@ export default function PassengerPortal({
     }
   }
 
-  // Swap From & To safely while preserving forward corridor alignment
+  // Swap From & To safely (supporting bidirectional corridor searches)
   const handleSwapStops = () => {
-    const fromObj = OFFICIAL_9_CORRIDOR_STOPS.find((s) => s.stop_name === currentStop)
-    const toObj = OFFICIAL_9_CORRIDOR_STOPS.find((s) => s.stop_name === destination)
-    const fromId = fromObj?.stop_id || 1
-    const toId = toObj?.stop_id || 8
-
-    if (toId < 9) {
-      setCurrentStop(destination)
-      const next = OFFICIAL_9_CORRIDOR_STOPS.find((s) => s.stop_id > toId)
-      setDestination(next ? next.stop_name : 'Kundapura')
-    } else {
-      const prev = OFFICIAL_9_CORRIDOR_STOPS.find((s) => s.stop_id < fromId)
-      if (prev) {
-        setDestination(currentStop)
-        setCurrentStop(prev.stop_name)
-      } else {
-        setCurrentStop('Surathkal')
-        setDestination('Udupi')
-      }
-    }
+    const temp = currentStop
+    setCurrentStop(destination)
+    setDestination(temp)
   }
 
   // Select Bus for Details (Screen 3)
@@ -463,26 +447,36 @@ export default function PassengerPortal({
     return [13.2208, 74.7431]
   }, [hasLiveCoordinates, trackedTelemetry])
 
-  // Map match raw GPS coordinates to actual NH-66 highway road geometry
+  // Active Route Information (Route 1: Karkala–Mangaluru NH-169 vs Route 2: Mangaluru–Kundapura NH-66)
+  const activeRouteInfo = useMemo(() => {
+    return (
+      determineRouteForJourney(currentStop, destination) ||
+      (activeSelectedBus?.route_id === 'R1' ? SYSTEM_ROUTES.R1 : SYSTEM_ROUTES.R2)
+    )
+  }, [currentStop, destination, activeSelectedBus])
+
+  // Map match raw GPS coordinates to actual route highway geometry (NH-169 or NH-66)
   const roadMatch = useMemo(() => {
     if (!hasLiveCoordinates) return null
-    return matchGpsToNH66Road(
+    return matchGpsToRoad(
       trackedTelemetry.latitude,
       trackedTelemetry.longitude,
-      trackedTelemetry.accuracy || 10
+      trackedTelemetry.accuracy || 10,
+      activeRouteInfo?.route_id || 'R2'
     )
-  }, [hasLiveCoordinates, trackedTelemetry?.latitude, trackedTelemetry?.longitude, trackedTelemetry?.accuracy])
+  }, [hasLiveCoordinates, trackedTelemetry?.latitude, trackedTelemetry?.longitude, trackedTelemetry?.accuracy, activeRouteInfo])
 
-  // Road distance progress, nearest stop, next stop, and ETA along NH-66
+  // Road distance progress, nearest stop, next stop, and ETA along active highway
   const roadProgress = useMemo(() => {
     if (!hasLiveCoordinates) return null
     return calculateRoadProgressAndNextStop(
       trackedTelemetry.latitude,
       trackedTelemetry.longitude,
       trackedTelemetry.speed || 0,
-      destination
+      destination,
+      activeRouteInfo?.route_id || 'R2'
     )
-  }, [hasLiveCoordinates, trackedTelemetry?.latitude, trackedTelemetry?.longitude, trackedTelemetry?.speed, destination])
+  }, [hasLiveCoordinates, trackedTelemetry?.latitude, trackedTelemetry?.longitude, trackedTelemetry?.speed, destination, activeRouteInfo])
 
   // Snapped road coordinate or raw GPS coordinate for the moving bus marker
   const movingBusLatLng = useMemo(() => {
@@ -517,44 +511,37 @@ export default function PassengerPortal({
     currentTrackingStatus,
   ])
 
-  // Full corridor 9-stop timeline list for Screen 3
+  // Official route stops timeline in travel direction for Screen 3 & Map Pins
   const corridorTimelineStops = useMemo(() => {
-    if (routeDetails?.stops?.length === 9) {
-      return routeDetails.stops
-    }
-    if (activeSelectedBus?.stops?.length === 9) {
+    if (activeSelectedBus?.stops && Array.isArray(activeSelectedBus.stops) && activeSelectedBus.stops.length >= 7) {
       return activeSelectedBus.stops
     }
-
-    const defaultTimingMap = {
-      Mangaluru: '09:55 AM',
-      Kuntikana: '10:05 AM',
-      Kulur: '10:15 AM',
-      Surathkal: '10:40 AM',
-      Mulki: '11:05 AM',
-      Padubidri: '11:20 AM',
-      Kaup: '11:35 AM',
-      Udupi: '12:15 PM',
-      Kundapura: '01:00 PM',
+    if (routeDetails?.stops && Array.isArray(routeDetails.stops) && routeDetails.stops.length >= 7) {
+      return routeDetails.stops
     }
+    if (activeRouteInfo?.ordered_stops) {
+      return activeRouteInfo.ordered_stops
+    }
+    return activeRouteInfo?.route_id === 'R1' ? SYSTEM_ROUTES.R1.stops : SYSTEM_ROUTES.R2.stops
+  }, [routeDetails, activeSelectedBus, activeRouteInfo])
 
-    return OFFICIAL_9_CORRIDOR_STOPS.map((stop) => ({
-      ...stop,
-      planned_arrival: defaultTimingMap[stop.stop_name] || '11:00 AM',
-    }))
-  }, [routeDetails, activeSelectedBus])
-
-  // Actual NH-66 highway road geometry with real curves, bends, flyovers and junctions
+  // Verified road polyline geometry: NH-169 for Route 1, NH-66 for Route 2
   const polylineCoordinates = useMemo(() => {
-    return NH66_HIGHWAY_POLYLINE
-  }, [])
+    return activeRouteInfo?.route_id === 'R1' ? NH169_HIGHWAY_POLYLINE : NH66_HIGHWAY_POLYLINE
+  }, [activeRouteInfo])
 
   const mapBounds = useMemo(() => {
+    if (activeRouteInfo?.route_id === 'R1') {
+      return [
+        [12.8633, 74.8385], // Mangaluru
+        [13.2188, 74.9776], // Karkala
+      ]
+    }
     return [
       [12.8633, 74.8385], // Mangaluru
       [13.6279, 74.6931], // Kundapura
     ]
-  }, [])
+  }, [activeRouteInfo])
 
   // ==========================================================================
   // PAGE 1: PASSENGER HOMEPAGE / START PAGE
@@ -609,7 +596,7 @@ export default function PassengerPortal({
               Buses: {currentStop} → {destination}
             </h1>
             <p className="text-xs font-semibold text-slate-600 m-0 mt-0.5">
-              Real-time services along Mangaluru ➔ Kundapura corridor
+              Real-time services along {activeRouteInfo?.route_name || 'coastal corridor'} ({activeRouteInfo?.highway || 'Highway'})
             </p>
           </div>
         </div>
@@ -898,7 +885,7 @@ export default function PassengerPortal({
               Live Bus Tracking
             </h1>
             <p className="text-xs font-semibold text-slate-600 m-0 mt-0.5">
-              {activeSelectedBus?.bus_name} ({activeSelectedBus?.vehicle_number}) • Mangaluru ➔ Kundapura Corridor
+              {activeSelectedBus?.bus_name} ({activeSelectedBus?.vehicle_number}) • {activeRouteInfo?.route_name || 'Corridor'} ({activeRouteInfo?.highway || 'Highway'})
             </p>
           </div>
         </div>
@@ -934,7 +921,7 @@ export default function PassengerPortal({
             hasLiveCoords={hasLiveCoordinates}
           />
 
-          {/* Continuous Dual-Layer Highway Road Polyline along verified NH-66 */}
+          {/* Continuous Dual-Layer Highway Road Polyline along verified route */}
           <Polyline
             positions={polylineCoordinates}
             color="#1d4ed8"
@@ -952,28 +939,24 @@ export default function PassengerPortal({
             lineJoin="round"
           />
 
-          {/* Labeled Pins for All 9 Official Corridor Stops */}
-          {OFFICIAL_9_CORRIDOR_STOPS.map((stop) => {
-            const isDestination =
-              stop.stop_name.toLowerCase() === destination.toLowerCase() ||
-              stop.stop_name === 'Kundapura'
-            const isBoarding =
-              stop.stop_name.toLowerCase() === currentStop.toLowerCase() ||
-              stop.stop_name === 'Mangaluru'
+          {/* Labeled Pins for Official Corridor Stops of Selected Route */}
+          {corridorTimelineStops.map((stop, sIdx) => {
+            const isDestination = stop.stop_name.toLowerCase() === destination.toLowerCase()
+            const isBoarding = stop.stop_name.toLowerCase() === currentStop.toLowerCase()
 
             return (
               <Marker
-                key={`stop-${stop.stop_id}`}
+                key={`stop-${stop.stop_name}-${sIdx}`}
                 position={[stop.latitude, stop.longitude]}
                 icon={stopPinIcon(stop.stop_name, isDestination, isBoarding)}
               >
                 <Popup>
                   <div className="text-xs">
                     <strong>
-                      {stop.stop_name} ({stop.stop_name_kn})
+                      {stop.stop_name} {stop.stop_name_kn ? `(${stop.stop_name_kn})` : ''}
                     </strong>
                     <br />
-                    Stop #{stop.stop_id} • Locality: {stop.locality}
+                    Stop #{sIdx + 1} • {stop.locality || activeRouteInfo?.corridor_name || 'Corridor'}
                   </div>
                 </Popup>
               </Marker>
@@ -1018,7 +1001,12 @@ export default function PassengerPortal({
           telemetry={trackedTelemetry}
           status={currentTrackingStatus}
           secondsAgo={secondsAgo}
-          journeyInfo={{ from: currentStop, to: destination }}
+          journeyInfo={{
+            from: currentStop,
+            to: destination,
+            route_id: activeRouteInfo?.route_id,
+            stops: activeRouteInfo?.stops,
+          }}
           roadProgress={roadProgress}
         />
       </div>

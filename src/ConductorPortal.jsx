@@ -522,6 +522,7 @@ export default function ConductorPortal({
           const telemetryPayload = {
             bus_id: activeBus.bus_id,
             vehicle_number: activeBus.vehicle_number,
+            route_id: activeBus.route_id || (activeBus.origin === 'Karkala' || activeBus.destination === 'Karkala' ? 'R1' : 'R2'),
             latitude: lat,
             longitude: lng,
             accuracy,
@@ -958,8 +959,12 @@ export default function ConductorPortal({
             </div>
             <div className="rounded-2xl bg-slate-50 border border-slate-200 p-4">
               <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Assigned Route</span>
-              <strong className="block text-base font-black text-slate-900 mt-1">{activeBus?.origin || 'Mangaluru'} → {activeBus?.destination || 'Udupi'}</strong>
-              <span className="text-xs text-slate-500 font-medium">Route #{activeBus?.route_number || '001'}</span>
+              <strong className="block text-base font-black text-slate-900 mt-1">
+                {activeBus?.origin || 'Mangaluru'} → {activeBus?.destination || (activeBus?.route_id === 'R1' ? 'Mangaluru' : 'Kundapura')}
+              </strong>
+              <span className="text-xs text-slate-500 font-medium">
+                {activeBus?.route_id === 'R1' ? 'Route 1: Karkala–Mangaluru (NH-169)' : 'Route 2: Mangaluru–Kundapura (NH-66)'} • Route #{activeBus?.route_number || (activeBus?.route_id === 'R1' ? '169' : '001')}
+              </span>
             </div>
           </div>
 

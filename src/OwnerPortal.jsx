@@ -30,8 +30,35 @@ import {
   X,
 } from 'lucide-react'
 import { apiUrl, ownerHeaders } from './api.js'
-import { formatIndianMobile, isValidIndianMobile } from './transitUtils.js'
+import {
+  formatIndianMobile,
+  isValidIndianMobile,
+  ROUTE_1_KARKALA_MANGALURU_STOPS,
+  ROUTE_2_MANGALURU_KUNDAPURA_STOPS,
+} from './transitUtils.js'
 import { useSynchronizedClock } from './istClockService.js'
+
+const ROUTE_1_DEFAULT_STOPS = [
+  { id: 1, stop_name: 'Karkala', planned_arrival: '06:30 AM' },
+  { id: 2, stop_name: 'Amandar', planned_arrival: '06:45 AM' },
+  { id: 3, stop_name: 'Moodbidri', planned_arrival: '07:05 AM' },
+  { id: 4, stop_name: 'Yedpa', planned_arrival: '07:20 AM' },
+  { id: 5, stop_name: 'Gangi', planned_arrival: '07:35 AM' },
+  { id: 6, stop_name: 'Kaikamba', planned_arrival: '07:50 AM' },
+  { id: 7, stop_name: 'Mangaluru', planned_arrival: '08:20 AM' },
+]
+
+const ROUTE_2_DEFAULT_STOPS = [
+  { id: 1, stop_name: 'Mangaluru', planned_arrival: '06:30 AM' },
+  { id: 2, stop_name: 'Kuntikana', planned_arrival: '06:45 AM' },
+  { id: 3, stop_name: 'Kulur', planned_arrival: '06:55 AM' },
+  { id: 4, stop_name: 'Surathkal', planned_arrival: '07:15 AM' },
+  { id: 5, stop_name: 'Mulki', planned_arrival: '07:35 AM' },
+  { id: 6, stop_name: 'Padubidri', planned_arrival: '07:55 AM' },
+  { id: 7, stop_name: 'Kaup', planned_arrival: '08:15 AM' },
+  { id: 8, stop_name: 'Udupi', planned_arrival: '08:35 AM' },
+  { id: 9, stop_name: 'Kundapura', planned_arrival: '09:15 AM' },
+]
 
 export default function OwnerPortal({
   ownerEmail,
@@ -91,23 +118,45 @@ export default function OwnerPortal({
   const [isSavingBus, setIsSavingBus] = useState(false)
   const [wizardError, setWizardError] = useState('')
   const [wizardForm, setWizardForm] = useState({
+    route_id: 'R2',
     vehicle_number: 'KA 19 AB 1234',
     bus_name: 'Shri Durga Prasad',
     service_type: 'Non AC',
     total_seats: 45,
     route_number: '001',
     origin: 'Mangaluru',
-    destination: 'Udupi',
-    stops: [
-      { id: 1, stop_name: 'Mangaluru', planned_arrival: '06:30 AM' },
-      { id: 2, stop_name: 'Surathkal', planned_arrival: '07:05 AM' },
-      { id: 3, stop_name: 'Kundapura', planned_arrival: '09:00 AM' },
-      { id: 4, stop_name: 'Udupi', planned_arrival: '10:00 AM' },
-    ],
+    destination: 'Kundapura',
+    stops: ROUTE_2_DEFAULT_STOPS.map((s) => ({ ...s })),
     departure_time: '06:30 AM',
     frequency: 'Daily',
-    journey_duration: '3 hours 30 minutes',
+    journey_duration: '2 hours 45 minutes',
   })
+
+  const handleRouteChange = (newRouteId) => {
+    if (newRouteId === 'R1') {
+      setWizardForm((prev) => ({
+        ...prev,
+        route_id: 'R1',
+        route_number: prev.route_number === '001' ? '169' : prev.route_number,
+        origin: 'Karkala',
+        destination: 'Mangaluru',
+        departure_time: '06:30 AM',
+        journey_duration: '1 hour 50 minutes',
+        stops: ROUTE_1_DEFAULT_STOPS.map((s) => ({ ...s })),
+      }))
+    } else {
+      setWizardForm((prev) => ({
+        ...prev,
+        route_id: 'R2',
+        route_number: prev.route_number === '169' ? '001' : prev.route_number,
+        origin: 'Mangaluru',
+        destination: 'Kundapura',
+        departure_time: '06:30 AM',
+        journey_duration: '2 hours 45 minutes',
+        stops: ROUTE_2_DEFAULT_STOPS.map((s) => ({ ...s })),
+      }))
+    }
+  }
 
   const otpRefs = [useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null)]
 
@@ -323,12 +372,15 @@ export default function OwnerPortal({
   // 5. Add Stop to Route in Wizard Step 2
   const handleAddStop = () => {
     setWizardError('')
+    const allowed = wizardForm.route_id === 'R1' ? ROUTE_1_DEFAULT_STOPS : ROUTE_2_DEFAULT_STOPS
+    const existingNames = new Set(wizardForm.stops.map((s) => s.stop_name))
+    const nextAvailable = allowed.find((s) => !existingNames.has(s.stop_name))?.stop_name || allowed[0].stop_name
     const newId = Date.now()
     setWizardForm((prev) => ({
       ...prev,
       stops: [
         ...prev.stops,
-        { id: newId, stop_name: '', planned_arrival: '10:30 AM' },
+        { id: newId, stop_name: nextAvailable, planned_arrival: '08:00 AM' },
       ],
     }))
   }
@@ -414,6 +466,7 @@ export default function OwnerPortal({
         bus_name: wizardForm.bus_name.trim(),
         vehicle_number: wizardForm.vehicle_number.trim(),
         route_number: wizardForm.route_number.trim(),
+        route_id: wizardForm.route_id || 'R2',
         service_type: wizardForm.service_type,
         origin: wizardForm.origin.trim(),
         destination: wizardForm.destination.trim(),
@@ -467,22 +520,18 @@ export default function OwnerPortal({
     setWizardError('')
     setWizardStep(1)
     setWizardForm({
+      route_id: 'R2',
       vehicle_number: '',
       bus_name: '',
       service_type: 'Non AC',
       total_seats: 45,
-      route_number: '',
+      route_number: '001',
       origin: 'Mangaluru',
-      destination: 'Udupi',
-      stops: [
-        { id: 1, stop_name: 'Mangaluru', planned_arrival: '06:30 AM' },
-        { id: 2, stop_name: 'Surathkal', planned_arrival: '07:05 AM' },
-        { id: 3, stop_name: 'Kundapura', planned_arrival: '09:00 AM' },
-        { id: 4, stop_name: 'Udupi', planned_arrival: '10:00 AM' },
-      ],
+      destination: 'Kundapura',
+      stops: ROUTE_2_DEFAULT_STOPS.map((s) => ({ ...s })),
       departure_time: '06:30 AM',
       frequency: 'Daily',
-      journey_duration: '3 hours 30 minutes',
+      journey_duration: '2 hours 45 minutes',
     })
     setViewMode('add-bus')
   }
@@ -494,23 +543,26 @@ export default function OwnerPortal({
     setEditingBusId(bus.bus_id)
     setWizardError('')
     setWizardStep(1)
+    const busRouteId =
+      bus.route_id ||
+      (bus.origin === 'Karkala' || bus.destination === 'Karkala' || bus.origin === 'Moodbidri' ? 'R1' : 'R2')
     setWizardForm({
+      route_id: busRouteId,
       vehicle_number: bus.vehicle_number || '',
       bus_name: bus.bus_name || '',
       service_type: bus.service_type || 'Non AC',
       total_seats: bus.total_seats || 45,
-      route_number: bus.route_number || '001',
-      origin: bus.origin || 'Mangaluru',
-      destination: bus.destination || 'Udupi',
+      route_number: bus.route_number || (busRouteId === 'R1' ? '169' : '001'),
+      origin: bus.origin || (busRouteId === 'R1' ? 'Karkala' : 'Mangaluru'),
+      destination: bus.destination || (busRouteId === 'R1' ? 'Mangaluru' : 'Kundapura'),
       departure_time: bus.departure_time || '06:30 AM',
       frequency: bus.frequency || 'Daily',
-      journey_duration: bus.journey_duration || '3 hours 30 minutes',
-      stops: Array.isArray(bus.stops) && bus.stops.length > 0
-        ? bus.stops.map((s, idx) => ({ id: idx + 1, stop_name: s.stop_name, planned_arrival: s.planned_arrival }))
-        : [
-            { id: 1, stop_name: bus.origin || 'Mangaluru', planned_arrival: bus.departure_time || '06:30 AM' },
-            { id: 2, stop_name: bus.destination || 'Udupi', planned_arrival: '10:00 AM' },
-          ],
+      journey_duration:
+        bus.journey_duration || (busRouteId === 'R1' ? '1 hour 50 minutes' : '2 hours 45 minutes'),
+      stops:
+        Array.isArray(bus.stops) && bus.stops.length > 0
+          ? bus.stops.map((s, idx) => ({ id: idx + 1, stop_name: s.stop_name, planned_arrival: s.planned_arrival }))
+          : (busRouteId === 'R1' ? ROUTE_1_DEFAULT_STOPS : ROUTE_2_DEFAULT_STOPS).map((s) => ({ ...s })),
     })
     setViewMode('add-bus')
   }
@@ -1089,6 +1141,52 @@ export default function OwnerPortal({
           {/* STEP 2: Route & Stops (Screen 5) */}
           {wizardStep === 2 && (
             <div className="space-y-6">
+              {/* Route Corridor Selection */}
+              <div>
+                <label className="block text-xs font-extrabold text-slate-700 mb-1.5">
+                  Select Route Corridor <span className="text-rose-500">*</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
+                  <div
+                    onClick={() => handleRouteChange('R1')}
+                    className={`p-3.5 rounded-2xl border-2 transition cursor-pointer flex flex-col justify-between ${
+                      wizardForm.route_id === 'R1'
+                        ? 'border-blue-600 bg-blue-50/70 shadow-xs'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-black text-slate-900">Route 1: Karkala – Mangaluru</span>
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                        NH-169
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      7 Stops: Karkala, Amandar, Moodbidri, Yedpa, Gangi, Kaikamba, Mangaluru
+                    </span>
+                  </div>
+
+                  <div
+                    onClick={() => handleRouteChange('R2')}
+                    className={`p-3.5 rounded-2xl border-2 transition cursor-pointer flex flex-col justify-between ${
+                      wizardForm.route_id === 'R2'
+                        ? 'border-blue-600 bg-blue-50/70 shadow-xs'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-black text-slate-900">Route 2: Mangaluru – Kundapura</span>
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                        NH-66
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      9 Stops: Mangaluru, Kuntikana, Kulur, Surathkal, Mulki, Padubidri, Kaup, Udupi, Kundapura
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-extrabold text-slate-700 mb-1">
                   Route Number <span className="text-rose-500">*</span>
@@ -1100,7 +1198,7 @@ export default function OwnerPortal({
                   onChange={(e) => setWizardForm({ ...wizardForm, route_number: e.target.value })}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-bold text-slate-900 focus:border-blue-600 outline-none"
                 />
-                <span className="text-[11px] text-slate-400 mt-0.5 block">Example: 001, 12A, etc.</span>
+                <span className="text-[11px] text-slate-400 mt-0.5 block">Example: 001, 169, 12A, etc.</span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1140,9 +1238,14 @@ export default function OwnerPortal({
               {/* Stops Table with Planned Arrival Times */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-extrabold text-slate-800 m-0">
-                    Route Stops and Planned Arrival Times
-                  </h3>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-slate-800 m-0">
+                      Route Stops and Planned Arrival Times
+                    </h3>
+                    <p className="text-[11px] text-slate-500 m-0 mt-0.5">
+                      Showing stops belonging exclusively to {wizardForm.route_id === 'R1' ? 'Route 1 (NH-169)' : 'Route 2 (NH-66)'}
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={handleAddStop}
@@ -1157,48 +1260,58 @@ export default function OwnerPortal({
                   <thead>
                     <tr>
                       <th style={{ width: '48px' }}>#</th>
-                      <th>Stop Name</th>
+                      <th>Stop Name ({wizardForm.route_id === 'R1' ? 'NH-169' : 'NH-66'})</th>
                       <th>Planned Arrival Time</th>
                       <th style={{ width: '70px', textAlign: 'center' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {wizardForm.stops.map((stop, index) => (
-                      <tr key={stop.id || index}>
-                        <td className="font-bold text-slate-400">{index + 1}</td>
-                        <td>
-                          <input
-                            type="text"
-                            placeholder="Stop Name"
-                            value={stop.stop_name}
-                            onChange={(e) => handleStopFieldChange(stop.id, 'stop_name', e.target.value)}
-                            className="w-full p-2 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:border-blue-600"
-                          />
-                        </td>
-                        <td>
-                          <div className="relative">
-                            <Clock size={14} className="absolute right-3 top-2.5 text-slate-400 pointer-events-none" />
-                            <input
-                              type="text"
-                              placeholder="06:30 AM"
-                              value={stop.planned_arrival}
-                              onChange={(e) => handleStopFieldChange(stop.id, 'planned_arrival', e.target.value)}
-                              className="w-full p-2 pr-8 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:border-blue-600"
-                            />
-                          </div>
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveStop(stop.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer"
-                            title="Remove Stop"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {wizardForm.stops.map((stop, index) => {
+                      const allowedRouteStops =
+                        wizardForm.route_id === 'R1'
+                          ? ROUTE_1_KARKALA_MANGALURU_STOPS
+                          : ROUTE_2_MANGALURU_KUNDAPURA_STOPS
+                      return (
+                        <tr key={stop.id || index}>
+                          <td className="font-bold text-slate-400">{index + 1}</td>
+                          <td>
+                            <select
+                              value={stop.stop_name}
+                              onChange={(e) => handleStopFieldChange(stop.id, 'stop_name', e.target.value)}
+                              className="w-full p-2 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:border-blue-600 bg-white"
+                            >
+                              {allowedRouteStops.map((s) => (
+                                <option key={s.stop_name} value={s.stop_name}>
+                                  {s.stop_name} ({s.stop_name_kn || s.stop_name})
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <div className="relative">
+                              <Clock size={14} className="absolute right-3 top-2.5 text-slate-400 pointer-events-none" />
+                              <input
+                                type="text"
+                                placeholder="06:30 AM"
+                                value={stop.planned_arrival}
+                                onChange={(e) => handleStopFieldChange(stop.id, 'planned_arrival', e.target.value)}
+                                className="w-full p-2 pr-8 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:border-blue-600"
+                              />
+                            </div>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveStop(stop.id)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer"
+                              title="Remove Stop"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1329,13 +1442,19 @@ export default function OwnerPortal({
                 <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider m-0">
                   Route Information
                 </h3>
-                <div className="grid grid-cols-2 gap-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
                   <div>
                     <span className="text-slate-400 block font-bold">Route Number</span>
                     <strong className="text-slate-900 font-extrabold">{wizardForm.route_number}</strong>
                   </div>
                   <div>
-                    <span className="text-slate-400 block font-bold">Route</span>
+                    <span className="text-slate-400 block font-bold">Corridor</span>
+                    <strong className="text-blue-700 font-extrabold">
+                      {wizardForm.route_id === 'R1' ? 'Route 1 (NH-169)' : 'Route 2 (NH-66)'}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block font-bold">Journey</span>
                     <strong className="text-slate-900 font-extrabold">
                       {wizardForm.origin} ➔ {wizardForm.destination}
                     </strong>
@@ -1765,7 +1884,12 @@ export default function OwnerPortal({
                               {bus.total_seats || 45}
                             </td>
                             <td className="font-bold text-slate-700 text-xs">
-                              {bus.origin || 'Mangaluru'} ➔ {bus.destination || 'Udupi'}
+                              <div>
+                                <span>{bus.origin || 'Mangaluru'} ➔ {bus.destination || 'Udupi'}</span>
+                                <span className={`block text-[10px] font-bold ${bus.route_id === 'R1' ? 'text-blue-600' : 'text-emerald-700'}`}>
+                                  {bus.route_id === 'R1' ? 'Route 1 (NH-169)' : 'Route 2 (NH-66)'}
+                                </span>
+                              </div>
                             </td>
                             <td className="font-semibold text-slate-600 text-xs">
                               {bus.departure_time || '06:30 AM'} {bus.frequency || 'Daily'}
@@ -1873,9 +1997,14 @@ export default function OwnerPortal({
                           </div>
                           <div className="flex justify-between py-1 border-b border-slate-100">
                             <span className="text-slate-400 font-bold">Route</span>
-                            <span className="font-extrabold text-slate-800">
-                              {selectedBusForView.origin || 'Mangaluru'} ➔ {selectedBusForView.destination || 'Udupi'}
-                            </span>
+                            <div className="text-right">
+                              <span className="font-extrabold text-slate-800 block">
+                                {selectedBusForView.origin || 'Mangaluru'} ➔ {selectedBusForView.destination || 'Udupi'}
+                              </span>
+                              <span className={`text-[10px] font-bold ${selectedBusForView.route_id === 'R1' ? 'text-blue-600' : 'text-emerald-700'}`}>
+                                {selectedBusForView.route_id === 'R1' ? 'Route 1: Karkala–Mangaluru (NH-169)' : 'Route 2: Mangaluru–Kundapura (NH-66)'}
+                              </span>
+                            </div>
                           </div>
                           <div className="flex justify-between py-1">
                             <span className="text-slate-400 font-bold">Departure Time</span>

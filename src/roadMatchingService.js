@@ -1,45 +1,63 @@
 import { NH66_HIGHWAY_POLYLINE, NH66_ROAD_DISTANCE_KM } from './nh66RouteGeometry.js'
-import { OFFICIAL_9_CORRIDOR_STOPS, calculateHaversineKm } from './transitUtils.js'
+import { NH169_HIGHWAY_POLYLINE, NH169_ROAD_DISTANCE_KM } from './nh169RouteGeometry.js'
+import {
+  OFFICIAL_9_CORRIDOR_STOPS,
+  ROUTE_1_STOPS,
+  ROUTE_2_STOPS,
+  calculateHaversineKm,
+} from './transitUtils.js'
+
+export { NH66_HIGHWAY_POLYLINE, NH66_ROAD_DISTANCE_KM }
+export { NH169_HIGHWAY_POLYLINE, NH169_ROAD_DISTANCE_KM }
 
 /**
- * Pre-computed cumulative road distances along the 2,210 NH-66 highway points.
- * Sourced directly from OpenStreetMap road network geometry.
+ * Pre-computed cumulative road distances along the NH-66 and NH-169 road network.
  */
-const cumulativeDistancesKm = new Float64Array(NH66_HIGHWAY_POLYLINE.length)
-let totalDistance = 0
-for (let i = 1; i < NH66_HIGHWAY_POLYLINE.length; i++) {
-  const p1 = NH66_HIGHWAY_POLYLINE[i - 1]
-  const p2 = NH66_HIGHWAY_POLYLINE[i]
-  totalDistance += calculateHaversineKm(p1[0], p1[1], p2[0], p2[1])
-  cumulativeDistancesKm[i] = totalDistance
+function buildCumulativeDistances(polyline) {
+  const arr = new Float64Array(polyline.length)
+  let total = 0
+  for (let i = 1; i < polyline.length; i++) {
+    const p1 = polyline[i - 1]
+    const p2 = polyline[i]
+    total += calculateHaversineKm(p1[0], p1[1], p2[0], p2[1])
+    arr[i] = total
+  }
+  return arr
 }
 
+const cumulativeDistancesR2 = buildCumulativeDistances(NH66_HIGHWAY_POLYLINE)
+const cumulativeDistancesR1 = buildCumulativeDistances(NH169_HIGHWAY_POLYLINE)
+
 /**
- * Stop highway milestone indices along the 2,210 polyline points.
+ * Stop milestone indices along route polylines.
  */
-const STOP_MILESTONES = OFFICIAL_9_CORRIDOR_STOPS.map((stop) => {
-  let closestIdx = 0
-  let minDist = Infinity
-  for (let i = 0; i < NH66_HIGHWAY_POLYLINE.length; i++) {
-    const pt = NH66_HIGHWAY_POLYLINE[i]
-    const d = calculateHaversineKm(stop.latitude, stop.longitude, pt[0], pt[1])
-    if (d < minDist) {
-      minDist = d
-      closestIdx = i
+function buildMilestones(stops, polyline, cumulativeDistances) {
+  return stops.map((stop) => {
+    let closestIdx = 0
+    let minDist = Infinity
+    for (let i = 0; i < polyline.length; i++) {
+      const pt = polyline[i]
+      const d = calculateHaversineKm(stop.latitude, stop.longitude, pt[0], pt[1])
+      if (d < minDist) {
+        minDist = d
+        closestIdx = i
+      }
     }
-  }
-  return {
-    ...stop,
-    polyIndex: closestIdx,
-    cumDistanceKm: cumulativeDistancesKm[closestIdx],
-  }
-})
+    return {
+      ...stop,
+      polyIndex: closestIdx,
+      cumDistanceKm: cumulativeDistances[closestIdx],
+    }
+  })
+}
+
+const STOP_MILESTONES_R2 = buildMilestones(ROUTE_2_STOPS, NH66_HIGHWAY_POLYLINE, cumulativeDistancesR2)
+const STOP_MILESTONES_R1 = buildMilestones(ROUTE_1_STOPS, NH169_HIGHWAY_POLYLINE, cumulativeDistancesR1)
 
 /**
  * Projects a GPS point onto a line segment [A, B] and returns the perpendicular distance in meters.
  */
 function projectPointToSegment(latP, lngP, latA, lngA, latB, lngB) {
-  // Approximate flat-earth projection local to coastal Karnataka
   const latFactor = 110900 // meters per degree latitude
   const lngFactor = 108300 // meters per degree longitude at ~13°N
 
@@ -72,14 +90,9 @@ function projectPointToSegment(latP, lngP, latA, lngA, latB, lngB) {
 }
 
 /**
- * Map-matches raw GPS coordinates to the verified NH-66 highway road geometry.
- *
- * Rules:
- * - Only snaps if the GPS position is within 80m of the highway and accuracy <= 80m.
- * - Does NOT force inaccurate or off-corridor GPS positions onto the road.
- * - Clearly indicates GPS accuracy status (HIGH, WEAK, OFF_ROUTE).
+ * Map-matches raw GPS coordinates to the verified road geometry of Route 1 or Route 2.
  */
-export function matchGpsToNH66Road(lat, lng, accuracy = 10) {
+export function matchGpsToRoad(lat, lng, accuracy = 10, routeId = 'R2') {
   if (typeof lat !== 'number' || typeof lng !== 'number') {
     return {
       isMatched: false,
@@ -91,21 +104,24 @@ export function matchGpsToNH66Road(lat, lng, accuracy = 10) {
     }
   }
 
+  const isR1 = routeId === 'R1' || routeId === '1' || String(routeId).toLowerCase().includes('karkala')
+  const polyline = isR1 ? NH169_HIGHWAY_POLYLINE : NH66_HIGHWAY_POLYLINE
+  const officialRoadName = isR1 ? 'NH-169 (Solapur–Mangaluru Highway)' : 'NH-66 (Panvel–Kochi Highway)'
+  const areaName = isR1 ? 'NH-169 Corridor Area' : 'NH-66 Corridor Area'
+
   let minDistanceMeters = Infinity
   let bestProjLat = lat
   let bestProjLng = lng
   let bestSegmentIndex = 0
 
-  // Search closest segment on NH-66 polyline
-  for (let i = 0; i < NH66_HIGHWAY_POLYLINE.length - 1; i++) {
-    const A = NH66_HIGHWAY_POLYLINE[i]
-    const B = NH66_HIGHWAY_POLYLINE[i + 1]
+  for (let i = 0; i < polyline.length - 1; i++) {
+    const A = polyline[i]
+    const B = polyline[i + 1]
 
-    // Quick bounding box filter (~250m)
-    const minLat = Math.min(A[0], B[0]) - 0.0025
-    const maxLat = Math.max(A[0], B[0]) + 0.0025
-    const minLng = Math.min(A[1], B[1]) - 0.0025
-    const maxLng = Math.max(A[1], B[1]) + 0.0025
+    const minLat = Math.min(A[0], B[0]) - 0.003
+    const maxLat = Math.max(A[0], B[0]) + 0.003
+    const minLng = Math.min(A[1], B[1]) - 0.003
+    const maxLng = Math.max(A[1], B[1]) + 0.003
 
     if (lat < minLat || lat > maxLat || lng < minLng || lng > maxLng) {
       continue
@@ -120,11 +136,10 @@ export function matchGpsToNH66Road(lat, lng, accuracy = 10) {
     }
   }
 
-  // If bounding box pass found nothing, do broader search
   if (minDistanceMeters === Infinity) {
-    for (let i = 0; i < NH66_HIGHWAY_POLYLINE.length - 1; i += 2) {
-      const A = NH66_HIGHWAY_POLYLINE[i]
-      const B = NH66_HIGHWAY_POLYLINE[i + 1]
+    for (let i = 0; i < polyline.length - 1; i += 2) {
+      const A = polyline[i]
+      const B = polyline[i + 1]
       const { projLat, projLng, distMeters } = projectPointToSegment(lat, lng, A[0], A[1], B[0], B[1])
       if (distMeters < minDistanceMeters) {
         minDistanceMeters = distMeters
@@ -136,16 +151,15 @@ export function matchGpsToNH66Road(lat, lng, accuracy = 10) {
   }
 
   const isAccuracyWeak = accuracy > 80
-  const isTooFarOffRoad = minDistanceMeters > 90
+  const isTooFarOffRoad = minDistanceMeters > 95
 
-  // Do NOT force inaccurate or off-corridor positions onto road
   if (isAccuracyWeak) {
     return {
       isMatched: false,
       roadLat: lat,
       roadLng: lng,
       accuracyStatus: 'GPS_WEAK',
-      roadName: 'NH-66 Corridor Area',
+      roadName: areaName,
       distanceToRoadMeters: Math.round(minDistanceMeters),
       segmentIndex: bestSegmentIndex,
       note: `GPS signal weak (±${Math.round(accuracy)}m). Showing raw satellite fix.`,
@@ -161,21 +175,25 @@ export function matchGpsToNH66Road(lat, lng, accuracy = 10) {
       roadName: 'Connecting Road / Terminus',
       distanceToRoadMeters: Math.round(minDistanceMeters),
       segmentIndex: bestSegmentIndex,
-      note: 'Bus currently off the main NH-66 highway.',
+      note: `Bus currently off the main ${isR1 ? 'NH-169' : 'NH-66'} highway.`,
     }
   }
 
-  // Reliable road match on NH-66 highway
   return {
     isMatched: true,
     roadLat: bestProjLat,
     roadLng: bestProjLng,
     accuracyStatus: 'HIGH',
-    roadName: 'NH-66 (Panvel–Kochi Highway)',
+    roadName: officialRoadName,
     distanceToRoadMeters: Math.round(minDistanceMeters),
     segmentIndex: bestSegmentIndex,
-    note: 'Snap-matched to NH-66 road geometry.',
+    note: `Snap-matched to ${isR1 ? 'NH-169' : 'NH-66'} road geometry.`,
   }
+}
+
+// Backward compatibility alias for NH-66
+export function matchGpsToNH66Road(lat, lng, accuracy = 10) {
+  return matchGpsToRoad(lat, lng, accuracy, 'R2')
 }
 
 /**
@@ -192,19 +210,27 @@ export function calculateBearing(lat1, lon1, lat2, lon2) {
 }
 
 /**
- * Determines road-based next stop, road distance remaining, and realistic ETA.
+ * Determines road-based next stop, road distance remaining, and realistic ETA for either route.
  */
-export function calculateRoadProgressAndNextStop(busLat, busLng, busSpeed = 0, targetStopName = 'Kundapura') {
-  const match = matchGpsToNH66Road(busLat, busLng, 20)
-  const currentCumDist = cumulativeDistancesKm[match.segmentIndex] || 0
+export function calculateRoadProgressAndNextStop(
+  busLat,
+  busLng,
+  busSpeed = 0,
+  targetStopName = '',
+  routeId = 'R2'
+) {
+  const isR1 = routeId === 'R1' || routeId === '1' || String(routeId).toLowerCase().includes('karkala')
+  const match = matchGpsToRoad(busLat, busLng, 20, routeId)
+  const cumDists = isR1 ? cumulativeDistancesR1 : cumulativeDistancesR2
+  const milestones = isR1 ? STOP_MILESTONES_R1 : STOP_MILESTONES_R2
+  const totalRoadKm = isR1 ? NH169_ROAD_DISTANCE_KM : NH66_ROAD_DISTANCE_KM
 
-  // Determine direction: Northbound (towards Kundapura) or Southbound (towards Mangaluru)
-  const isNorthbound = true // Mangaluru -> Kundapura corridor standard
+  const currentCumDist = cumDists[match.segmentIndex] || 0
 
-  // Find nearest stop and next stop along corridor
-  let nearestStop = STOP_MILESTONES[0]
+  // Find nearest stop along corridor
+  let nearestStop = milestones[0]
   let minStopDist = Infinity
-  for (const s of STOP_MILESTONES) {
+  for (const s of milestones) {
     const d = calculateHaversineKm(busLat, busLng, s.latitude, s.longitude)
     if (d < minStopDist) {
       minStopDist = d
@@ -213,22 +239,22 @@ export function calculateRoadProgressAndNextStop(busLat, busLng, busSpeed = 0, t
   }
 
   // Next stop along corridor in forward direction
-  let nextStop = STOP_MILESTONES[STOP_MILESTONES.length - 1]
-  for (const s of STOP_MILESTONES) {
+  let nextStop = milestones[milestones.length - 1]
+  for (const s of milestones) {
     if (s.polyIndex > match.segmentIndex + 5) {
       nextStop = s
       break
     }
   }
 
-  // Highway road distance remaining along NH-66 polyline
+  // Highway road distance remaining along road polyline
   const targetMilestone =
-    STOP_MILESTONES.find((s) => s.stop_name.toLowerCase() === targetStopName.toLowerCase()) ||
-    STOP_MILESTONES[STOP_MILESTONES.length - 1]
+    (targetStopName && milestones.find((s) => s.stop_name.toLowerCase() === targetStopName.toLowerCase())) ||
+    milestones[milestones.length - 1]
 
   const roadDistToTargetKm = Math.max(
     0,
-    Number(((targetMilestone.cumDistanceKm || NH66_ROAD_DISTANCE_KM) - currentCumDist).toFixed(1))
+    Number(((targetMilestone.cumDistanceKm || totalRoadKm) - currentCumDist).toFixed(1))
   )
 
   const roadDistToNextStopKm = Math.max(
@@ -236,8 +262,6 @@ export function calculateRoadProgressAndNextStop(busLat, busLng, busSpeed = 0, t
     Number(((nextStop.cumDistanceKm || currentCumDist) - currentCumDist).toFixed(1))
   )
 
-  // Realistic highway ETA calculation:
-  // Use sensor speed if active, or corridor average (38 km/h for coastal NH-66)
   const effectiveSpeed = busSpeed >= 15 && busSpeed <= 80 ? busSpeed : 38
   const etaMinutesToTarget = Math.max(1, Math.round((roadDistToTargetKm / effectiveSpeed) * 60))
   const etaMinutesToNext = Math.max(1, Math.round((roadDistToNextStopKm / effectiveSpeed) * 60))
@@ -247,7 +271,6 @@ export function calculateRoadProgressAndNextStop(busLat, busLng, busSpeed = 0, t
     isRoadMatched: match.isMatched,
     accuracyStatus: match.accuracyStatus,
     distanceToRoadMeters: match.distanceToRoadMeters,
-    directionOfTravel: isNorthbound ? 'Northbound (Towards Kundapura)' : 'Southbound (Towards Mangaluru)',
     nearestStop: nearestStop.stop_name,
     nearestStopDistKm: Number(minStopDist.toFixed(1)),
     nextStop: nextStop.stop_name,

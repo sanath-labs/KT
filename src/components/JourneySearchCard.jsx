@@ -53,8 +53,8 @@ export default function JourneySearchCard({
     heading: lang === 'kn' ? 'ನೀವು ಎಲ್ಲಿಗೆ ಹೋಗಬೇಕಾಗಿದೆ?' : 'Where would you like to go?',
     subheading:
       lang === 'kn'
-        ? 'ಕರಾವಳಿ ಹೆದ್ದಾರಿಯ (NH-66) ಖಾಸಗಿ ಎಕ್ಸ್‌ಪ್ರೆಸ್ ಬಸ್‌ಗಳ ವೇಳಾಪಟ್ಟಿ ಮತ್ತು ಲೈವ್ ಜಿಪಿಎಸ್ ಟ್ರ್ಯಾಕಿಂಗ್ ಹುಡುಕಿ.'
-        : 'Find scheduled services and live buses along the coastal corridor.',
+        ? 'ಕರಾವಳಿ ಕಾರಿಡಾರ್‌ಗಳ (NH-169 ಕಾರ್ಕಳ–ಮಂಗಳೂರು ಮತ್ತು NH-66 ಮಂಗಳೂರು–ಕುಂದಾಪುರ) ಬಸ್ ವೇಳಾಪಟ್ಟಿ ಮತ್ತು ಲೈವ್ ಜಿಪಿಎಸ್ ಟ್ರ್ಯಾಕಿಂಗ್.'
+        : 'Find scheduled services and live buses across Route 1 (Karkala–Mangaluru) and Route 2 (Mangaluru–Kundapura).',
     noLoginBadge:
       lang === 'kn'
         ? 'ಪ್ರಯಾಣಿಕರ ಲಾಗಿನ್ ಅಗತ್ಯವಿಲ್ಲ • ಉಚಿತ ಸಾರ್ವಜನಿಕ ಸೇವೆ'
@@ -126,7 +126,7 @@ export default function JourneySearchCard({
                 {currentStop}
               </span>
               <span className="text-xs text-slate-500 font-semibold hidden sm:inline">
-                (NH-66 Corridor)
+                (Karavali Corridor)
               </span>
             </div>
             <ChevronDown
@@ -260,7 +260,7 @@ export default function JourneySearchCard({
                 {destination}
               </span>
               <span className="text-xs text-slate-500 font-semibold hidden sm:inline">
-                (NH-66 Corridor)
+                (Karavali Corridor)
               </span>
             </div>
             <ChevronDown
