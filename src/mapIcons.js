@@ -30,54 +30,40 @@ export function createRotatingBusIcon({
   }
 
   const rotationDeg = Number(heading) || 0
-  const speedDisplay = speed > 0 ? `${Math.round(speed)} km/h` : 'Stopped'
 
   return L.divIcon({
     className: 'google-maps-bus-marker',
     html: `
-      <div style="position:relative;width:56px;height:56px;display:flex;align-items:center;justify-content:center;transform:translate3d(0,0,0);pointer-events:auto;">
-        <!-- Pulsing Live Radar Aura -->
+      <div style="position:relative;width:52px;height:52px;display:flex;align-items:center;justify-content:center;transform:translate3d(0,0,0);pointer-events:auto;">
+        <!-- Pulsing Live GPS Accuracy Beacon (Google Maps Style) -->
         ${
           !isStale
-            ? `<div style="position:absolute;width:52px;height:52px;border-radius:50%;background:${auraColor};animation:ping 2.5s cubic-bezier(0,0,0.2,1) infinite;"></div>`
+            ? `<div style="position:absolute;width:48px;height:48px;border-radius:50%;background:${auraColor};animation:ping 2.2s cubic-bezier(0,0,0.2,1) infinite;"></div>`
             : ''
         }
 
-        <!-- Rotating Navigation Heading Beam / Arrow -->
-        <div style="position:absolute;width:56px;height:56px;display:flex;align-items:center;justify-content:center;transform:rotate(${rotationDeg}deg);transition:transform 0.4s ease-out;pointer-events:none;">
-          <svg width="48" height="48" viewBox="0 0 48 48" style="overflow:visible;">
-            <!-- Directional forward arrow -->
-            <polygon points="24,2 31,16 24,12 17,16" fill="${primaryColor}" stroke="#ffffff" stroke-width="1.5" />
-          </svg>
-        </div>
+        <!-- Rotating Google Maps Navigation Vehicle & Direction Arrow -->
+        <div style="position:relative;width:52px;height:52px;display:flex;align-items:center;justify-content:center;transform:rotate(${rotationDeg}deg);transition:transform 0.35s cubic-bezier(0.25,1,0.5,1);pointer-events:none;">
+          <!-- Front Navigation Directional Heading Arrow -->
+          <div style="position:absolute;top:2px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:8px solid ${primaryColor};filter:drop-shadow(0 -1px 2px rgba(0,0,0,0.3));z-index:3;"></div>
 
-        <!-- Center Bus Marker Core -->
-        <div style="position:relative;width:34px;height:34px;border-radius:50%;background:${primaryColor};color:#ffffff;border:3px solid #ffffff;box-shadow:0 3px 10px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;z-index:2;">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M8 6v6"/>
-            <path d="M15 6v6"/>
-            <path d="M2 12h19.6"/>
-            <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.6 19.1 6 18 6H4c-1.1 0-2.1.6-2.4 1.8l-1.4 5c-.1.4-.2.8-.2 1.2 0 .4.1.8.2 1.2.3 1.1.8 2.8.8 2.8h3"/>
-            <circle cx="7" cy="18" r="2"/>
-            <path d="M9 18h5"/>
-            <circle cx="16" cy="18" r="2"/>
-          </svg>
+          <!-- Crisp Google Maps Rectangular Bus Badge (Exact Location, No Number Clutter) -->
+          <div style="position:relative;width:38px;height:24px;background:${primaryColor};border:2px solid #ffffff;border-radius:6px;box-shadow:0 3px 10px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;z-index:2;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="15" rx="2"/>
+              <path d="M3 9h18"/>
+              <path d="M7 14h.01"/>
+              <path d="M17 14h.01"/>
+              <path d="M5 18v2"/>
+              <path d="M19 18v2"/>
+            </svg>
+          </div>
         </div>
-
-        <!-- Vehicle Registration & Speed Tag (Google Maps style bottom pill) -->
-        ${
-          vehicleNumber
-            ? `<div style="position:absolute;top:44px;left:50%;transform:translateX(-50%);background:#ffffff;color:#1e293b;border:1px solid #cbd5e1;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:800;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.18);display:flex;align-items:center;gap:3px;z-index:3;">
-                <span>${vehicleNumber}</span>
-                <span style="color:#64748b;font-weight:600;">• ${speedDisplay}</span>
-               </div>`
-            : ''
-        }
       </div>
     `,
-    iconSize: [56, 56],
-    iconAnchor: [28, 28],
-    popupAnchor: [0, -28],
+    iconSize: [52, 52],
+    iconAnchor: [26, 26],
+    popupAnchor: [0, -26],
   })
 }
 
