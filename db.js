@@ -1,8 +1,10 @@
 import 'dotenv/config'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import sqlite3 from 'sqlite3'
+import { createRequire } from 'node:module'
 import pg from 'pg'
+
+const require = createRequire(import.meta.url)
 
 // Ensure PostgreSQL timestamps without timezone are parsed as UTC
 pg.types.setTypeParser(1114, (str) => {
@@ -24,22 +26,36 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const dbPath = path.resolve(__dirname, 'transit.db')
 
-// SQLite Instance (Lazy loaded to prevent uncloneable C++ handles in worker threads)
+// SQLite Instance (Lazy loaded to prevent uncloneable C++ handles and Linux GLIBC mismatches in cloud environments)
 let _sqliteDb = null
+let _sqlite3Module = null
 
 export function getSqliteDb() {
   if (!_sqliteDb) {
-    _sqliteDb = new sqlite3.Database(dbPath, (err) => {
-      if (err) console.error('❌ Could not connect to SQLite database:', err.message)
-      else {
-        _sqliteDb.configure('busyTimeout', 15000)
-        _sqliteDb.run('PRAGMA busy_timeout = 15000;')
-        _sqliteDb.run('PRAGMA journal_mode = WAL;')
-      }
-    })
     try {
-      _sqliteDb.configure('busyTimeout', 15000)
-    } catch {}
+      if (!_sqlite3Module) {
+        _sqlite3Module = require('sqlite3')
+      }
+      _sqliteDb = new _sqlite3Module.Database(dbPath, (err) => {
+        if (err) console.error('❌ Could not connect to SQLite database:', err.message)
+        else {
+          _sqliteDb.configure('busyTimeout', 15000)
+          _sqliteDb.run('PRAGMA busy_timeout = 15000;')
+          _sqliteDb.run('PRAGMA journal_mode = WAL;')
+        }
+      })
+      try {
+        _sqliteDb.configure('busyTimeout', 15000)
+      } catch {}
+    } catch (loadErr) {
+      console.warn('⚠️ SQLite driver not loaded (safe fallback for PostgreSQL cloud deployments):', loadErr.message)
+      _sqliteDb = {
+        run: (_, cb) => cb && cb(new Error('SQLite not available in cloud environment')),
+        all: (_, cb) => cb && cb(new Error('SQLite not available in cloud environment'), []),
+        get: (_, cb) => cb && cb(new Error('SQLite not available in cloud environment'), null),
+        serialize: (fn) => fn && fn(),
+      }
+    }
   }
   return _sqliteDb
 }
