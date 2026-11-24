@@ -13,11 +13,9 @@ services:
           name: karavali-transit-db
           property: connectionString
       - key: GMAIL_USER
-        sync: false
+        value: rakeshtravels018@gmail.com
       - key: GMAIL_APP_PASSWORD
-        sync: false
-      - key: RESEND_API_KEY
-        sync: false
+        value: qfvi qmou scqe silo
       - key: OTP_SECRET_SALT
         generateValue: true
 
