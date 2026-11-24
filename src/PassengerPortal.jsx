@@ -439,14 +439,6 @@ export default function PassengerPortal({
 
   const [isFollowingBus, setIsFollowingBus] = useState(true)
 
-  const busCoords = useMemo(() => {
-    if (hasLiveCoordinates && typeof trackedTelemetry?.latitude === 'number' && typeof trackedTelemetry?.longitude === 'number' && !isNaN(trackedTelemetry.latitude) && !isNaN(trackedTelemetry.longitude)) {
-      return [trackedTelemetry.latitude, trackedTelemetry.longitude]
-    }
-    // Default corridor center for map centering
-    return activeRouteInfo?.route_id === 'R1' ? [13.0410, 74.9080] : [13.2208, 74.7431]
-  }, [hasLiveCoordinates, trackedTelemetry, activeRouteInfo])
-
   // Active Route Information (Route 1: Karkala–Mangaluru NH-169 vs Route 2: Mangaluru–Kundapura NH-66)
   const activeRouteInfo = useMemo(() => {
     return (
@@ -454,6 +446,14 @@ export default function PassengerPortal({
       (activeSelectedBus?.route_id === 'R1' ? SYSTEM_ROUTES.R1 : SYSTEM_ROUTES.R2)
     )
   }, [currentStop, destination, activeSelectedBus])
+
+  const busCoords = useMemo(() => {
+    if (hasLiveCoordinates && typeof trackedTelemetry?.latitude === 'number' && typeof trackedTelemetry?.longitude === 'number' && !isNaN(trackedTelemetry.latitude) && !isNaN(trackedTelemetry.longitude)) {
+      return [trackedTelemetry.latitude, trackedTelemetry.longitude]
+    }
+    // Default corridor center for map centering
+    return activeRouteInfo?.route_id === 'R1' ? [13.0410, 74.9080] : [13.2208, 74.7431]
+  }, [hasLiveCoordinates, trackedTelemetry, activeRouteInfo])
 
   // Map match raw GPS coordinates to actual route highway geometry (NH-169 or NH-66)
   const roadMatch = useMemo(() => {
