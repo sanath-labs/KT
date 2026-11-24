@@ -54,16 +54,30 @@ export const sqliteDb = {
 export const db = sqliteDb // Backward compatibility alias
 
 // PostgreSQL Pool (External / Local service)
-const pgPool = new pg.Pool({
-  host: process.env.PGHOST || 'localhost',
-  port: Number(process.env.PGPORT) || 5432,
-  user: process.env.PGUSER || 'postgres',
-  password: String(process.env.PGPASSWORD || ''),
-  database: process.env.PGDATABASE || 'karavali_transit',
-  max: 10,
-  idleTimeoutMillis: 1000,
-  allowExitOnIdle: true,
-})
+const pgPoolConfig = process.env.DATABASE_URL
+  ? {
+      connectionString: process.env.DATABASE_URL,
+      ssl:
+        process.env.DATABASE_URL.includes('localhost') ||
+        process.env.DATABASE_URL.includes('127.0.0.1')
+          ? false
+          : { rejectUnauthorized: false },
+      max: 10,
+      idleTimeoutMillis: 1000,
+      allowExitOnIdle: true,
+    }
+  : {
+      host: process.env.PGHOST || 'localhost',
+      port: Number(process.env.PGPORT) || 5432,
+      user: process.env.PGUSER || 'postgres',
+      password: String(process.env.PGPASSWORD || ''),
+      database: process.env.PGDATABASE || 'karavali_transit',
+      max: 10,
+      idleTimeoutMillis: 1000,
+      allowExitOnIdle: true,
+    }
+
+const pgPool = new pg.Pool(pgPoolConfig)
 
 let isConnected = false
 let activeEngine = 'sqlite' // 'postgres' | 'sqlite'

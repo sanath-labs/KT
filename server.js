@@ -1563,6 +1563,24 @@ setInterval(() => {
   }
 }, 15000)
 
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import fs from 'node:fs'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const distDir = path.join(__dirname, 'dist')
+
+// In production, serve the built Vite frontend SPA
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir))
+  app.use((req, res, next) => {
+    if (req.method === 'GET' && !req.path.startsWith('/api') && !req.path.startsWith('/socket.io')) {
+      return res.sendFile(path.join(distDir, 'index.html'))
+    }
+    next()
+  })
+}
+
 const PORT = process.env.PORT || 5000
 
 await initDB()
