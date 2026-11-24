@@ -14,8 +14,6 @@ import { apiUrl, socketUrl } from './api.js'
 import { OFFICIAL_9_CORRIDOR_STOPS } from './transitUtils.js'
 import { NH66_HIGHWAY_POLYLINE } from './nh66RouteGeometry.js'
 import JourneySearchCard from './components/JourneySearchCard.jsx'
-import PopularJourneys from './components/PopularJourneys.jsx'
-import RouteStrip from './components/RouteStrip.jsx'
 import BusCard from './components/BusCard.jsx'
 import RouteTimeline from './components/RouteTimeline.jsx'
 import LiveTrackingHud from './components/LiveTrackingHud.jsx'
@@ -586,44 +584,6 @@ export default function PassengerPortal({
         loadingBuses={loadingBuses}
         lang={lang}
       />
-
-      {/* 2. Popular Journeys along NH-66 Corridor */}
-      <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs">
-        <PopularJourneys
-          routes={[
-            { from: 'Mangaluru', to: 'Udupi' },
-            { from: 'Surathkal', to: 'Udupi' },
-            { from: 'Mangaluru', to: 'Kundapura' },
-            { from: 'Mulki', to: 'Kaup' },
-            { from: 'Udupi', to: 'Kundapura' },
-          ]}
-          onSelectJourney={(from, to) => {
-            setCurrentStop(from)
-            setDestination(to)
-            handleSearchBuses(from, to, desiredTime, true)
-          }}
-          lang={lang}
-        />
-      </div>
-
-      {/* 3. 9 Official Corridor Stops Quick Selection */}
-      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-2xs space-y-2">
-        <div className="text-xs font-black text-slate-700 uppercase tracking-wider">
-          {lang === 'kn' ? '೯ ಅಧಿಕೃತ ಹೆದ್ದಾರಿ ನಿಲ್ದಾಣಗಳು (NH-66)' : '9 Official NH-66 Corridor Stops'}
-        </div>
-        <p className="text-xs text-slate-500 font-medium">
-          {lang === 'kn'
-            ? 'ನಿಲ್ದಾಣವನ್ನು ಆರಿಸಿ ನೇರವಾಗಿ ಪ್ರಯಾಣ ಹುಡುಕಿ:'
-            : 'Click any stop to quickly set it as your boarding point:'}
-        </p>
-        <div className="pt-1">
-          <RouteStrip
-            onSelectStop={(stopName) => {
-              handleSelectFromStop(stopName)
-            }}
-          />
-        </div>
-      </div>
     </div>
   )
 
