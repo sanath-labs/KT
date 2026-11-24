@@ -579,7 +579,7 @@ export default function PassengerPortal({
               Buses: {currentStop} → {destination}
             </h1>
             <p className="text-xs font-semibold text-slate-600 m-0 mt-0.5">
-              Showing services for {desiredTime?.toLowerCase() === 'now' || !desiredTime ? `Now (${clock.istTimeShort} IST)` : `${desiredTime} IST`} • Live schedule comparison
+              Real-time services along Mangaluru ➔ Kundapura corridor
             </p>
           </div>
         </div>

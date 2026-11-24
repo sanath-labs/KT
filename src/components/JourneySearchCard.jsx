@@ -61,8 +61,6 @@ export default function JourneySearchCard({
         : 'Search buses without signing in',
     boardingLabel: lang === 'kn' ? 'ಹತ್ತುವ ನಿಲ್ದಾಣ (Boarding)' : 'Boarding Stop',
     destinationLabel: lang === 'kn' ? 'ಇಳಿಯುವ ನಿಲ್ದಾಣ (Destination)' : 'Destination Stop',
-    desiredTimeLabel: lang === 'kn' ? 'ಅಪೇಕ್ಷಿತ ಸಮಯ (Desired Time)' : 'Desired Time',
-    quickTimesLabel: lang === 'kn' ? 'ತ್ವರಿತ ಸಮಯ:' : 'Quick Time:',
     filterPlaceholder: lang === 'kn' ? 'ನಿಲ್ದಾಣದ ಹೆಸರನ್ನು ಟೈಪ್ ಮಾಡಿ...' : 'Type stop name to filter...',
     searchBtn: lang === 'kn' ? 'ಲಭ್ಯವಿರುವ ಬಸ್‌ಗಳನ್ನು ಹುಡುಕಿ' : 'Search buses',
     searchingBtn: lang === 'kn' ? 'ಬಸ್‌ಗಳನ್ನು ಹುಡುಕಲಾಗುತ್ತಿದೆ...' : 'Finding Buses...',
@@ -96,7 +94,7 @@ export default function JourneySearchCard({
       </div>
 
       {/* Responsive Search Form: Desktop Horizontal Grid / Mobile Vertical Stack */}
-      <div className="grid grid-cols-1 md:grid-cols-[1.1fr,auto,1.1fr,0.9fr,auto] items-end gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-[1.2fr,auto,1.2fr,auto] items-end gap-3 sm:gap-4">
         {/* 1. Boarding Stop (From) */}
         <div className="relative" ref={fromContainerRef}>
           <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
@@ -352,26 +350,7 @@ export default function JourneySearchCard({
           )}
         </div>
 
-        {/* 4. Desired Time */}
-        <div className="relative">
-          <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-            <Clock size={14} className="text-blue-600 shrink-0" />
-            <span>{text.desiredTimeLabel}</span>
-          </label>
-
-          <div className="relative">
-            <input
-              type="text"
-              aria-label="Select desired boarding time"
-              value={desiredTime}
-              onChange={(e) => setDesiredTime?.(e.target.value)}
-              placeholder={`e.g. Now (${clock.istTimeShort}) or 09:00 AM`}
-              className="w-full px-4 py-3.5 min-h-[48px] rounded-xl border border-slate-300 bg-slate-50 hover:bg-white hover:border-blue-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 font-black text-sm sm:text-base text-slate-900 transition shadow-2xs"
-            />
-          </div>
-        </div>
-
-        {/* 5. Large "Find Available Buses" Button */}
+        {/* 3. Large "Find Available Buses" Button */}
         <div className="w-full md:w-auto">
           <button
             type="button"
@@ -383,28 +362,6 @@ export default function JourneySearchCard({
             <span>{loadingBuses ? text.searchingBtn : text.searchBtn}</span>
           </button>
         </div>
-      </div>
-
-      {/* Quick Time Preset Selector */}
-      <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2 text-xs">
-        <span className="font-bold text-slate-500 flex items-center gap-1 shrink-0">
-          <Clock size={12} className="text-slate-400" />
-          <span>{text.quickTimesLabel}</span>
-        </span>
-        {['Now', '08:00 AM', '09:00 AM', '10:30 AM', '12:00 PM', '02:00 PM', '04:30 PM', '06:30 PM'].map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setDesiredTime?.(t === 'Now' ? 'Now' : t)}
-            className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer border ${
-              desiredTime === t || (t === 'Now' && desiredTime?.toLowerCase() === 'now')
-                ? 'bg-blue-50 text-blue-700 border-blue-300 shadow-2xs'
-                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
-            }`}
-          >
-            {t === 'Now' ? `⚡ Now (${clock.istTimeShort} IST)` : t}
-          </button>
-        ))}
       </div>
     </div>
   )
