@@ -80,6 +80,7 @@ export default function OwnerPortal({
   const [resendCountdown, setResendCountdown] = useState(60)
   const [authError, setAuthError] = useState('')
   const [authLoading, setAuthLoading] = useState(false)
+  const [fallbackOtpCode, setFallbackOtpCode] = useState('')
 
   // Dashboard & Navigation state
   const [activeTab, setActiveTab] = useState('dashboard') // 'dashboard' | 'buses' | 'conductors' | 'routes' | 'reports' | 'settings'
@@ -277,6 +278,7 @@ export default function OwnerPortal({
       if (res.ok && data.success) {
         setOtpDigits(['', '', '', '', '', ''])
         setResendCountdown(data.cooldown_seconds || 60)
+        setFallbackOtpCode(data.fallback_code || '')
         setOtpStep('otp')
       } else {
         setAuthError(data.error || 'Failed to send OTP code.')
@@ -832,6 +834,31 @@ export default function OwnerPortal({
             <p className="owner-auth-desc">
               We have sent a 6-digit OTP to <strong>{ownerEmail}</strong>. Please check your Gmail inbox and enter the code below.
             </p>
+
+            {fallbackOtpCode && (
+              <div className="mb-4 p-3.5 bg-blue-50 border border-blue-200 rounded-2xl text-blue-950 text-xs text-center space-y-1.5 shadow-xs">
+                <div className="flex items-center justify-center gap-1.5 text-blue-800 font-black">
+                  <CheckCircle2 size={16} className="text-blue-600" />
+                  <span>Cloud Host Notice (SMTP Blocked)</span>
+                </div>
+                <p className="m-0 text-slate-600 text-[11px] leading-relaxed">
+                  Your cloud server has SMTP blocked. Your 6-digit security code is:
+                </p>
+                <div className="font-mono text-2xl font-black text-blue-700 tracking-widest py-0.5">
+                  {fallbackOtpCode}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const digits = fallbackOtpCode.split('').slice(0, 6)
+                    setOtpDigits(digits)
+                  }}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl text-xs font-black cursor-pointer shadow-xs transition"
+                >
+                  ⚡ Auto-Fill Code
+                </button>
+              </div>
+            )}
 
             <form onSubmit={handleVerifyOtp}>
               {/* 6 OTP Input Boxes */}

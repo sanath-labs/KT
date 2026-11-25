@@ -241,7 +241,8 @@ app.post('/api/owner/send-otp', async (req, res) => {
     success: true,
     message: emailDelivered
       ? `6-digit verification code sent to ${cleanEmail}. Valid for 5 minutes.`
-      : `Verification code generated. If email delivery is delayed by cloud network, check your Render Dashboard Logs for the code.`,
+      : `Verification code generated. If email delivery is delayed by cloud network, code is shown below.`,
+    fallback_code: !emailDelivered ? otp : undefined,
     agency_name: owner.agency_name,
     warning: deliveryWarning || undefined,
     expires_in_seconds: Math.floor(OTP_TTL_MS / 1000),
@@ -768,12 +769,13 @@ app.post('/api/conductor/send-otp', async (req, res) => {
     createdAt: now,
   })
 
-  // 7. Success response — never exposes the OTP value to client
+  // 7. Success response
   res.json({
     success: true,
     message: emailDelivered
       ? `6-digit verification code sent to ${cleanEmail}. Valid for 5 minutes.`
-      : `Verification code generated. If email delivery is delayed by cloud network, check your Render Dashboard Logs for the code.`,
+      : `Verification code generated. If email delivery is delayed by cloud network, code is shown below.`,
+    fallback_code: !emailDelivered ? otp : undefined,
     agency_name: owner.agency_name,
     warning: deliveryWarning || undefined,
     expires_in_seconds: Math.floor(OTP_TTL_MS / 1000),

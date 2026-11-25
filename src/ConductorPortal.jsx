@@ -68,6 +68,7 @@ export default function ConductorPortal({
   const [authLoading, setAuthLoading] = useState(false)
   const [authError, setAuthError] = useState('')
   const [notice, setNotice] = useState('')
+  const [fallbackOtpCode, setFallbackOtpCode] = useState('')
 
   // Step 3: Conductor Mobile Number
   const [conductorPhone, setConductorPhone] = useState('')
@@ -202,6 +203,7 @@ export default function ConductorPortal({
         setResendCountdown(data.cooldown_seconds || 60)
         setOtpExpirySeconds(data.expires_in_seconds || 300)
         setOtpCode(['', '', '', '', '', ''])
+        setFallbackOtpCode(data.fallback_code || '')
         setStep(2)
         setNotice(
           data.message ||
@@ -810,6 +812,31 @@ export default function ConductorPortal({
 
             {step === 2 && (
               <form onSubmit={handleVerifyOtp} className="space-y-4">
+                {fallbackOtpCode && (
+                  <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-2xl text-blue-950 text-xs text-center space-y-1.5 shadow-xs">
+                    <div className="flex items-center justify-center gap-1.5 text-blue-800 font-black">
+                      <CheckCircle2 size={16} className="text-blue-600" />
+                      <span>Cloud Host Notice (SMTP Blocked)</span>
+                    </div>
+                    <p className="m-0 text-slate-600 text-[11px] leading-relaxed">
+                      Your cloud server has SMTP blocked. Your 6-digit security code is:
+                    </p>
+                    <div className="font-mono text-2xl font-black text-blue-700 tracking-widest py-0.5">
+                      {fallbackOtpCode}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const digits = fallbackOtpCode.split('').slice(0, 6)
+                        setOtpCode(digits)
+                      }}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl text-xs font-black cursor-pointer shadow-xs transition"
+                    >
+                      ⚡ Auto-Fill Code
+                    </button>
+                  </div>
+                )}
+
                 {/* 5-Minute Expiry Countdown HUD */}
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2 text-xs font-semibold">
                   <div className="flex items-center gap-1.5 text-slate-600">
